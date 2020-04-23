@@ -9,8 +9,8 @@ const MAX_VOXELS = 1000;
 const VERTS = [_]f32{
     -0.5, -0.5, 0.0,
     0.5,  -0.5, 0.0,
-    -0.5,  0.5,  0.0,
-    0.5, 0.5, 0.0,
+    -0.5, 0.5,  0.0,
+    0.5,  0.5,  0.0,
 };
 
 pub const Screen = struct {
@@ -80,6 +80,8 @@ pub const Screen = struct {
         self.color_data[0] = 255;
         self.color_data[1] = 0;
         self.color_data[2] = 0;
+
+        self.voxel_count = 1;
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {}
