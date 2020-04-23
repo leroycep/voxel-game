@@ -2,18 +2,38 @@ const std = @import("std");
 const c = @import("../c.zig");
 const platform = @import("../platform.zig");
 
+const VERTEX_SHADER_SOURCE = @embedFile("./vertex.glsl");
+const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
+
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
+    shader: u32,
 
     pub fn new(alloc: *std.mem.Allocator) @This() {
         return @This(){
             .alloc = alloc,
+            .shader = 0,
         };
     }
 
-    pub fn init(self: @This(), ctx: platform.Context) !void {}
+    pub fn init(self: *@This(), ctx: platform.Context) !void {
+        const vertexShader = c.glCreateShader(c.GL_VERTEX_SHADER);
+        defer c.glDeleteShader(vertexShader);
+        _ = c.glShaderSource(vertexShader, 1, &(@as([:0]const u8, VERTEX_SHADER_SOURCE).ptr), null);
+        _ = c.glCompileShader(vertexShader);
 
-    pub fn deinit(self: @This(), ctx: platform.Context) void {}
+        const fragmentShader = c.glCreateShader(c.GL_FRAGMENT_SHADER);
+        defer c.glDeleteShader(fragmentShader);
+        _ = c.glShaderSource(fragmentShader, 1, &(@as([:0]const u8, FRAGMENT_SHADER_SOURCE).ptr), null);
+        _ = c.glCompileShader(fragmentShader);
+
+        self.shader = c.glCreateProgram();
+        c.glAttachShader(self.shader, vertexShader);
+        c.glAttachShader(self.shader, fragmentShader);
+        c.glLinkProgram(self.shader);
+    }
+
+    pub fn deinit(self: *@This(), ctx: platform.Context) void {}
 
     pub fn update(self: *@This(), ctx: platform.Context, tickTime: f64, delta: f64) !void {
         var event: c.SDL_Event = undefined;
@@ -29,6 +49,7 @@ pub const Screen = struct {
     }
 
     pub fn render(self: *@This(), ctx: platform.Context, alpha: f64) !void {
+        c.glUseProgram(self.shader);
         c.SDL_GL_SwapWindow(ctx.window);
     }
 };
