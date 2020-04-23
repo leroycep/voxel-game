@@ -7,10 +7,10 @@ const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
 
 const MAX_VOXELS = 1000;
 const VERTS = [_]f32{
-    -0.5, -0.5, 0.0,
-    0.5,  -0.5, 0.0,
-    -0.5, 0.5,  0.0,
-    0.5,  0.5,  0.0,
+    -1.0, -1.0, 0.0,
+    1.0,  -1.0, 0.0,
+    -1.0, 1.0,  0.0,
+    1.0,  1.0,  0.0,
 };
 
 pub const Screen = struct {
@@ -75,13 +75,22 @@ pub const Screen = struct {
         self.position_size_data[0] = 0.0;
         self.position_size_data[1] = 0.0;
         self.position_size_data[2] = 0.0;
-        self.position_size_data[3] = 0.0;
+        self.position_size_data[3] = 0.1;
+
+        self.position_size_data[4] = -0.5;
+        self.position_size_data[5] = 0.0;
+        self.position_size_data[6] = 0.0;
+        self.position_size_data[7] = 0.05;
 
         self.color_data[0] = 255;
         self.color_data[1] = 0;
         self.color_data[2] = 0;
 
-        self.voxel_count = 1;
+        self.color_data[3] = 0;
+        self.color_data[4] = 255;
+        self.color_data[5] = 0;
+
+        self.voxel_count = 2;
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {
