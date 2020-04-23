@@ -52,28 +52,15 @@ pub fn main() !void {
     var context = platform.Context{
         .window = window,
         .glcontext = &glcontext,
+        .should_quit = &should_quit,
     };
 
     // Initialize app
     var screen = GameScreen.new(alloc);
-    try screen.init();
+    try screen.init(context);
+    defer screen.deinit(context);
 
     while (!should_quit) {
-        var event: c.SDL_Event = undefined;
-        while (c.SDL_PollEvent(&event) != 0) {
-            switch (event.@"type") {
-                c.SDL_QUIT => {
-                    should_quit = true;
-                    break;
-                },
-                c.SDL_KEYDOWN => if (event.key.keysym.sym == c.SDLK_ESCAPE) {
-                    should_quit = true;
-                    break;
-                },
-                else => {},
-            }
-        }
-
         var delta = @intToFloat(f64, timer.lap()) / std.time.ns_per_s; // Delta in seconds
         if (delta > MAX_DELTA) {
             delta = MAX_DELTA; // Try to avoid spiral of death when lag hits
@@ -82,7 +69,7 @@ pub fn main() !void {
         accumulator += delta;
 
         while (accumulator >= TICK_DELTA) {
-            try screen.update(tickTime, TICK_DELTA);
+            try screen.update(context, tickTime, TICK_DELTA);
             accumulator -= TICK_DELTA;
             tickTime += TICK_DELTA;
         }
