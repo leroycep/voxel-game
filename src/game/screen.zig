@@ -109,7 +109,7 @@ pub const Screen = struct {
         c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, self.voxel_count * 4 * @sizeOf(u8), self.color_data.ptr);
 
         // 1st attribute buffer: vertices
-        c.glEnableVertexAtrribArray(0);
+        c.glEnableVertexAttribArray(0);
         c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
         c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 0, null);
 
@@ -125,11 +125,11 @@ pub const Screen = struct {
 
         c.glUseProgram(self.shader);
 
-        c.glVertexAtrribDivisor(0, 0);
-        c.glVertexAtrribDivisor(1, 1);
-        c.glVertexAtrribDivisor(2, 1);
+        c.glVertexAttribDivisor(0, 0);
+        c.glVertexAttribDivisor(1, 1);
+        c.glVertexAttribDivisor(2, 1);
 
-        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, 4, self.voxel_count);
+        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, 4, @intCast(c_int, self.voxel_count));
 
         c.SDL_GL_SwapWindow(ctx.window);
     }
