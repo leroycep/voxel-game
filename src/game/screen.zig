@@ -8,11 +8,13 @@ const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
     shader: u32,
+    vbo: u32,
 
     pub fn new(alloc: *std.mem.Allocator) @This() {
         return @This(){
             .alloc = alloc,
             .shader = 0,
+            .vbo = 0,
         };
     }
 
@@ -31,6 +33,8 @@ pub const Screen = struct {
         c.glAttachShader(self.shader, vertexShader);
         c.glAttachShader(self.shader, fragmentShader);
         c.glLinkProgram(self.shader);
+
+        c.glGenBuffers(1, &self.vbo);
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {}
@@ -49,7 +53,22 @@ pub const Screen = struct {
     }
 
     pub fn render(self: *@This(), ctx: platform.Context, alpha: f64) !void {
+        const VERTS = [_]f32{
+            -0.5, -0.5, 0.0,
+            0.5,  -0.5, 0.0,
+            0.0,  0.5,  0.0,
+        };
+
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, VERTS.len * @sizeOf(f32), &VERTS, c.GL_STATIC_DRAW);
+
+        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 3 * @sizeOf(f32), null);
+        c.glEnableVertexAttribArray(0);
+
         c.glUseProgram(self.shader);
+
+        c.glDrawArrays(c.GL_TRIANGLES, 0, 3);
+
         c.SDL_GL_SwapWindow(ctx.window);
     }
 };
