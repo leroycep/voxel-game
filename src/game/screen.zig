@@ -31,8 +31,8 @@ pub const Screen = struct {
             .position_vbo = 0,
             .color_vbo = 0,
             .voxel_count = 0,
-            .position_size_data = undefined,
-            .color_data = undefined,
+            .position_size_data = &[_]f32{},
+            .color_data = &[_]u8{},
         };
     }
 
@@ -84,7 +84,10 @@ pub const Screen = struct {
         self.voxel_count = 1;
     }
 
-    pub fn deinit(self: *@This(), ctx: platform.Context) void {}
+    pub fn deinit(self: *@This(), ctx: platform.Context) void {
+        self.alloc.free(self.position_size_data);
+        self.alloc.free(self.color_data);
+    }
 
     pub fn update(self: *@This(), ctx: platform.Context, tickTime: f64, delta: f64) !void {
         var event: c.SDL_Event = undefined;
