@@ -5,6 +5,8 @@ const c = @import("./c.zig");
 
 const constants = @import("./constants.zig");
 const sdl = @import("./sdl.zig");
+const platform = @import("./platform.zig");
+const GameScreen = @import("./game/screen.zig").Screen;
 
 const SCREEN_WIDTH = 640;
 const SCREEN_HEIGHT = 480;
@@ -46,6 +48,16 @@ pub fn main() !void {
     var accumulator: f64 = 0.0;
     var should_quit = false;
 
+    // Initialize context
+    var context = platform.Context{
+        .window = window,
+        .glcontext = &glcontext,
+    };
+
+    // Initialize app
+    var screen = GameScreen.new(alloc);
+    try screen.init();
+
     while (!should_quit) {
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event) != 0) {
@@ -70,7 +82,7 @@ pub fn main() !void {
         accumulator += delta;
 
         while (accumulator >= TICK_DELTA) {
-            //app.update(&context, tickTime, TICK_DELTA);
+            try screen.update(tickTime, TICK_DELTA);
             accumulator -= TICK_DELTA;
             tickTime += TICK_DELTA;
         }
@@ -80,6 +92,6 @@ pub fn main() !void {
         // then alpha will be equal to 0.5
         const alpha = accumulator / TICK_DELTA;
 
-        // app.render(&context, alpha);
+        try screen.render(context, alpha);
     }
 }
