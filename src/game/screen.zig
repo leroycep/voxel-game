@@ -5,16 +5,34 @@ const platform = @import("../platform.zig");
 const VERTEX_SHADER_SOURCE = @embedFile("./vertex.glsl");
 const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
 
+const MAX_VOXELS = 1000;
+const VERTS = [_]f32{
+    -0.5, -0.5, 0.0,
+    0.5,  -0.5, 0.0,
+    -0.5,  0.5,  0.0,
+    0.5, 0.5, 0.0,
+};
+
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
     shader: u32,
-    vbo: u32,
+    mesh_vbo: u32,
+    position_vbo: u32,
+    color_vbo: u32,
+    voxel_count: u32,
+    position_size_data: []f32,
+    color_data: []u8,
 
     pub fn new(alloc: *std.mem.Allocator) @This() {
         return @This(){
             .alloc = alloc,
             .shader = 0,
-            .vbo = 0,
+            .mesh_vbo = 0,
+            .position_vbo = 0,
+            .color_vbo = 0,
+            .voxel_count = 0,
+            .position_size_data = undefined,
+            .color_data = undefined,
         };
     }
 
@@ -34,7 +52,34 @@ pub const Screen = struct {
         c.glAttachShader(self.shader, fragmentShader);
         c.glLinkProgram(self.shader);
 
-        c.glGenBuffers(1, &self.vbo);
+        c.glGenBuffers(1, &self.mesh_vbo);
+        c.glGenBuffers(1, &self.position_vbo);
+        c.glGenBuffers(1, &self.color_vbo);
+
+        // VBO containing 4 vertices of particles
+        // All particles share these verts using instancing
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, VERTS.len * @sizeOf(f32), &VERTS, c.GL_STATIC_DRAW);
+
+        // VBO containing position of each voxel billboard
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(f32), null, c.GL_STREAM_DRAW);
+
+        // VBO containing color of each voxel
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(u8), null, c.GL_STREAM_DRAW);
+
+        self.position_size_data = try self.alloc.alloc(f32, MAX_VOXELS);
+        self.color_data = try self.alloc.alloc(u8, MAX_VOXELS);
+
+        self.position_size_data[0] = 0.0;
+        self.position_size_data[1] = 0.0;
+        self.position_size_data[2] = 0.0;
+        self.position_size_data[3] = 0.0;
+
+        self.color_data[0] = 255;
+        self.color_data[1] = 0;
+        self.color_data[2] = 0;
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {}
@@ -53,21 +98,38 @@ pub const Screen = struct {
     }
 
     pub fn render(self: *@This(), ctx: platform.Context, alpha: f64) !void {
-        const VERTS = [_]f32{
-            -0.5, -0.5, 0.0,
-            0.5,  -0.5, 0.0,
-            0.0,  0.5,  0.0,
-        };
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
 
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.vbo);
-        c.glBufferData(c.GL_ARRAY_BUFFER, VERTS.len * @sizeOf(f32), &VERTS, c.GL_STATIC_DRAW);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(f32), null, c.GL_STREAM_DRAW);
+        c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, self.voxel_count * 4 * @sizeOf(f32), self.position_size_data.ptr);
 
-        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 3 * @sizeOf(f32), null);
-        c.glEnableVertexAttribArray(0);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(u8), null, c.GL_STREAM_DRAW);
+        c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, self.voxel_count * 4 * @sizeOf(u8), self.color_data.ptr);
+
+        // 1st attribute buffer: vertices
+        c.glEnableVertexAtrribArray(0);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
+        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
+        // 2nd attribute buffer: vertices
+        c.glEnableVertexAttribArray(1);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
+        c.glVertexAttribPointer(1, 4, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
+        // 3rd attribute buffer: vertices
+        c.glEnableVertexAttribArray(2);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
+        c.glVertexAttribPointer(2, 4, c.GL_UNSIGNED_BYTE, c.GL_TRUE, 0, null);
 
         c.glUseProgram(self.shader);
 
-        c.glDrawArrays(c.GL_TRIANGLES, 0, 3);
+        c.glVertexAtrribDivisor(0, 0);
+        c.glVertexAtrribDivisor(1, 1);
+        c.glVertexAtrribDivisor(2, 1);
+
+        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, 4, self.voxel_count);
 
         c.SDL_GL_SwapWindow(ctx.window);
     }
