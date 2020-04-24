@@ -226,9 +226,9 @@ fn lookAt(eye: Vec3f, target: Vec3f, up: Vec3f) [16]f32 {
     res[4 * 1 + 0] = u.items[0];
     res[4 * 1 + 1] = u.items[1];
     res[4 * 1 + 2] = u.items[2];
-    res[4 * 2 + 0] = f.items[0];
-    res[4 * 2 + 1] = f.items[1];
-    res[4 * 2 + 2] = f.items[2];
+    res[4 * 2 + 0] = -f.items[0];
+    res[4 * 2 + 1] = -f.items[1];
+    res[4 * 2 + 2] = -f.items[2];
     res[4 * 0 + 3] = -s.dot(eye);
     res[4 * 1 + 3] = -u.dot(eye);
     res[4 * 2 + 3] = f.dot(eye);
