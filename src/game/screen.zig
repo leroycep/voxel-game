@@ -10,10 +10,20 @@ const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
 
 const MAX_VOXELS = 1000;
 const VERTS = [_]f32{
-    -1.0, -1.0, 0.0,
-    1.0,  -1.0, 0.0,
-    -1.0, 1.0,  0.0,
-    1.0,  1.0,  0.0,
+    -0.5, 0.5,  0.5, // Front-top-left
+    0.5,  0.5,  0.5, // Front-top-right
+    -0.5, -0.5, 0.5, // Front-bottom-left
+    0.5,  -0.5, 0.5, // Front-bottom-right
+    0.5,  -0.5, -0.5, // Back-bottom-right
+    0.5,  0.5,  0.5, // Front-top-right
+    0.5,  0.5,  -0.5, // Back-top-right
+    -0.5, 0.5,  0.5, // Front-top-left
+    -0.5, 0.5,  -0.5, // Back-top-left
+    -0.5, -0.5, 0.5, // Front-bottom-left
+    -0.5, -0.5, -0.5, // Back-bottom-left
+    0.5,  -0.5, -0.5, // Back-bottom-right
+    -0.5, 0.5,  -0.5, // Back-top-left
+    0.5,  0.5,  -0.5, // Back-top-right
 };
 const COLOR_ATTRS = 3;
 
@@ -107,17 +117,17 @@ pub const Screen = struct {
         self.position_size_data[0] = 0.0;
         self.position_size_data[1] = 0.0;
         self.position_size_data[2] = 0.0;
-        self.position_size_data[3] = 0.5;
+        self.position_size_data[3] = 1;
 
         self.position_size_data[4] = 1;
         self.position_size_data[5] = 0.0;
         self.position_size_data[6] = 0;
-        self.position_size_data[7] = 0.5;
+        self.position_size_data[7] = 1;
 
         self.position_size_data[8] = 0;
         self.position_size_data[9] = 0;
         self.position_size_data[10] = 1;
-        self.position_size_data[11] = 0.5;
+        self.position_size_data[11] = 1;
 
         self.color_data[0] = 255;
         self.color_data[1] = 0;
@@ -153,7 +163,7 @@ pub const Screen = struct {
 
         const radius = 10;
         self.camera.pos.items[0] = std.math.sin(@floatCast(f32, tickTime)) * radius;
-        self.camera.pos.items[1] = 0;
+        self.camera.pos.items[1] = 10;
         self.camera.pos.items[2] = std.math.cos(@floatCast(f32, tickTime)) * radius;
         self.camera.dir = Vec3f.new(.{ 0, 0, 0 }).sub(self.camera.pos).normalize();
     }
@@ -192,7 +202,7 @@ pub const Screen = struct {
         c.glVertexAttribDivisor(1, 1);
         c.glVertexAttribDivisor(2, 1);
 
-        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, 4, @intCast(c_int, self.voxel_count));
+        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, @divFloor(VERTS.len, 3), @intCast(c_int, self.voxel_count));
 
         c.SDL_GL_SwapWindow(ctx.window);
     }
