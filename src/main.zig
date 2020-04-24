@@ -39,6 +39,8 @@ pub fn main() !void {
         c.glDebugMessageCallback(sdl.glErrCallback, null);
     }
 
+    c.glEnable(c.GL_DEPTH_TEST);
+
     // Timestep based on the Gaffer on Games post, "Fix Your Timestep"
     //    https://www.gafferongames.com/post/fix_your_timestep/
     const MAX_DELTA = constants.MAX_DELTA_SECONDS;
