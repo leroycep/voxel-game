@@ -28,6 +28,17 @@ pub fn Vec3(comptime T: type) type {
             return res;
         }
 
+        pub fn scalMul(self: @This(), scal: T) @This() {
+            var res: @This() = undefined;
+
+            comptime var i = 0;
+            inline while (i < self.items.len) : (i += 1) {
+                res.items[i] = self.items[i] * scal;
+            }
+
+            return res;
+        }
+
         pub fn normalize(self: @This()) @This() {
             const mag = self.magnitude();
             var res: @This() = undefined;
