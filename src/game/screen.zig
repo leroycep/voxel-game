@@ -10,10 +10,10 @@ const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
 
 const MAX_VOXELS = 1000;
 const VERTS = [_]f32{
-    -1.0, -1.0, 0.0,
-    1.0,  -1.0, 0.0,
-    -1.0, 1.0,  0.0,
-    1.0,  1.0,  0.0,
+    -0.5, -0.5, 0.0,
+     0.5, -0.5, 0.0,
+    -0.5,  0.5, 0.0,
+     0.5,  0.5, 0.0,
 };
 const COLOR_ATTRS = 3;
 
@@ -32,8 +32,12 @@ const Camera = struct {
         };
     }
 
+    pub fn view(self: @This()) [16]f32 {
+        return lookAt(self.pos, self.pos.add(self.dir), self.up);
+    }
+
     pub fn viewProjection(self: @This()) [16]f32 {
-        return mat4.mul(self.projectionMatrix, lookAt(self.pos, self.pos.add(self.dir), self.up));
+        return mat4.mul(self.projectionMatrix, self.view());
     }
 };
 
@@ -48,13 +52,15 @@ pub const Screen = struct {
     voxel_count: u32,
     position_size_data: []f32,
     color_data: []u8,
+    camera_right: i32,
+    camera_up: i32,
 
     pub fn new(alloc: *std.mem.Allocator) @This() {
         const camerapos = Vec3f.new(.{ 5, 0, -10 });
         return @This(){
             .alloc = alloc,
             .shader = 0,
-            .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 100),
+            .camera = Camera.init(camerapos, std.math.tau * 1.0 / 8.0, 640.0 / 480.0, 0.01, 100),
             .projectionMatrixUniform = -1,
             .mesh_vbo = 0,
             .position_vbo = 0,
@@ -62,6 +68,8 @@ pub const Screen = struct {
             .voxel_count = 0,
             .position_size_data = &[_]f32{},
             .color_data = &[_]u8{},
+            .camera_right = 0,
+            .camera_up = 0,
         };
     }
 
@@ -82,7 +90,9 @@ pub const Screen = struct {
         c.glLinkProgram(self.shader);
 
         c.glUseProgram(self.shader);
-        self.projectionMatrixUniform = c.glGetUniformLocation(self.shader, "projectionMatrix");
+        self.projectionMatrixUniform = c.glGetUniformLocation(self.shader, "VP");
+        self.camera_right = c.glGetUniformLocation(self.shader, "camera_right");
+        self.camera_up = c.glGetUniformLocation(self.shader, "camera_up");
 
         c.glGenBuffers(1, &self.mesh_vbo);
         c.glGenBuffers(1, &self.position_vbo);
@@ -116,8 +126,18 @@ pub const Screen = struct {
 
         self.position_size_data[8] = 0;
         self.position_size_data[9] = 0;
-        self.position_size_data[10] = 1;
+        self.position_size_data[10] = 5;
         self.position_size_data[11] = 0.5;
+
+        self.position_size_data[12] = 0;
+        self.position_size_data[13] = 1;
+        self.position_size_data[14] = 0;
+        self.position_size_data[15] = 0.5;
+
+        self.position_size_data[16] = 5;
+        self.position_size_data[17] = 2;
+        self.position_size_data[18] = 1;
+        self.position_size_data[19] = 5;
 
         self.color_data[0] = 255;
         self.color_data[1] = 0;
@@ -131,7 +151,15 @@ pub const Screen = struct {
         self.color_data[7] = 0;
         self.color_data[8] = 255;
 
-        self.voxel_count = 3;
+        self.color_data[9] = 0;
+        self.color_data[10] = 0;
+        self.color_data[11] = 255;
+
+        self.color_data[12] = 0;
+        self.color_data[13] = 0;
+        self.color_data[14] = 255;
+
+        self.voxel_count = 5;
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {
@@ -144,18 +172,23 @@ pub const Screen = struct {
         while (c.SDL_PollEvent(&event) != 0) {
             switch (event.@"type") {
                 c.SDL_QUIT => ctx.should_quit.* = true,
-                c.SDL_KEYDOWN => if (event.key.keysym.sym == c.SDLK_ESCAPE) {
-                    ctx.should_quit.* = true;
+                c.SDL_KEYDOWN => switch (event.key.keysym.sym) {
+                    c.SDLK_ESCAPE => ctx.should_quit.* = true,
+                    c.SDLK_w => self.camera.pos.items[0] += 1,
+                    c.SDLK_s => self.camera.pos.items[0] -= 1,
+                    c.SDLK_a => self.camera.pos.items[2] += 1,
+                    c.SDLK_d => self.camera.pos.items[2] -= 1,
+                    else => {}
                 },
                 else => {},
             }
         }
 
-        const radius = 10;
-        self.camera.pos.items[0] = std.math.sin(@floatCast(f32, tickTime)) * radius;
-        self.camera.pos.items[1] = 0;
-        self.camera.pos.items[2] = std.math.cos(@floatCast(f32, tickTime)) * radius;
-        self.camera.dir = Vec3f.new(.{ 0, 0, 0 }).sub(self.camera.pos).normalize();
+    //     const radius = 20;
+    //     self.camera.pos.items[0] = std.math.sin(@floatCast(f32, tickTime)) * radius;
+    //     self.camera.pos.items[1] = 0;
+    //     self.camera.pos.items[2] = std.math.cos(@floatCast(f32, tickTime)) * radius;
+        // self.camera.dir = Vec3f.new(.{ 0, 0, 0 }).sub(self.camera.pos).normalize();
     }
 
     pub fn render(self: *@This(), ctx: platform.Context, alpha: f64) !void {
@@ -186,6 +219,22 @@ pub const Screen = struct {
 
         c.glUseProgram(self.shader);
 
+        var viewMatrix = self.camera.view();
+        std.debug.warn("r: {}, {}, {} - u: {} {} {}\n",
+                      .{viewMatrix[4 * 0 + 0],
+                        viewMatrix[4 * 1 + 0],
+                        viewMatrix[4 * 2 + 0],
+                        viewMatrix[4 * 0 + 1],
+                        viewMatrix[4 * 1 + 1],
+                        viewMatrix[4 * 2 + 1]});
+        c.glUniform3f(self.camera_right,
+                      viewMatrix[4 * 0 + 0],
+                      viewMatrix[4 * 1 + 0],
+                      viewMatrix[4 * 2 + 0]);
+        c.glUniform3f(self.camera_up,
+                      viewMatrix[4 * 0 + 1],
+                      viewMatrix[4 * 1 + 1],
+                      viewMatrix[4 * 2 + 1]);
         c.glUniformMatrix4fv(self.projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.viewProjection());
 
         c.glVertexAttribDivisor(0, 0);
@@ -213,9 +262,10 @@ fn perspective(fov: f32, aspect: f32, near: f32, far: f32) [16]f32 {
 }
 
 fn lookAt(eye: Vec3f, target: Vec3f, up: Vec3f) [16]f32 {
-    const f = target.sub(eye).normalize();
-    const s = f.cross(up.normalize()).normalize();
-    const u = s.cross(f);
+    var f = target.sub(eye).normalize();
+    var u = up.normalize();
+    var s = f.cross(u).normalize();
+    u = s.cross(f);
 
     var res: [16]f32 = undefined;
     std.mem.set(f32, &res, 1);
@@ -226,9 +276,9 @@ fn lookAt(eye: Vec3f, target: Vec3f, up: Vec3f) [16]f32 {
     res[4 * 1 + 0] = u.items[0];
     res[4 * 1 + 1] = u.items[1];
     res[4 * 1 + 2] = u.items[2];
-    res[4 * 2 + 0] = f.items[0];
-    res[4 * 2 + 1] = f.items[1];
-    res[4 * 2 + 2] = f.items[2];
+    res[4 * 2 + 0] = -f.items[0];
+    res[4 * 2 + 1] = -f.items[1];
+    res[4 * 2 + 2] = -f.items[2];
     res[4 * 0 + 3] = -s.dot(eye);
     res[4 * 1 + 3] = -u.dot(eye);
     res[4 * 2 + 3] = f.dot(eye);

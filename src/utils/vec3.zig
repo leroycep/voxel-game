@@ -28,6 +28,16 @@ pub fn Vec3(comptime T: type) type {
             return res;
         }
 
+        pub fn negate(self: @This()) @This() {
+            var res: @This() = undefined;
+
+            inline for (self.items) |i| {
+                res.items[i] = -self.items[i];
+            }
+
+            return res;
+        }
+
         pub fn normalize(self: @This()) @This() {
             const mag = self.magnitude();
             var res: @This() = undefined;
