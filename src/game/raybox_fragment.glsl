@@ -128,6 +128,7 @@ void main()
         discard;
     } else {
         gl_FragDepth = distance / far;
-        FragColor = vec4(vColor.xyz, 1.0);
+        mediump float facingRatio = max(0.0, dot(normal, -rayDirection));
+        FragColor = vec4(vColor.xyz, 1.0) * facingRatio;
     }
 }
