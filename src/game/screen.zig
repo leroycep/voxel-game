@@ -84,6 +84,12 @@ pub const Screen = struct {
         up: bool,
         down: bool,
     },
+    ctrlr_axis: struct {
+        left_v: i16,
+        left_h: i16,
+        right_v: i16,
+        right_h: i16,
+    },
     look_angle: struct {
         h: f32,
         v: f32,
@@ -113,6 +119,12 @@ pub const Screen = struct {
                 .right = false,
                 .up = false,
                 .down = false,
+            },
+            .ctrlr_axis = .{
+                .left_v = 0,
+                .left_h = 0,
+                .right_v = 0,
+                .right_h = 0,
             },
             .look_angle = .{
                 .h = 0.0,
@@ -210,6 +222,12 @@ pub const Screen = struct {
         self.voxel_count = 3;
 
         _ = c.SDL_SetRelativeMouseMode(.SDL_TRUE);
+        var i: i32 = 0;
+        var controller = while (i < c.SDL_NumJoysticks()) : (i += 1) {
+            if (c.SDL_IsGameController(i) == .SDL_TRUE) {
+                break c.SDL_GameControllerOpen(i);
+            }
+        } else null;
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {
@@ -250,10 +268,22 @@ pub const Screen = struct {
                     self.look_angle.h -= MOUSE_SPEED * @floatCast(f32, delta) * @intToFloat(f32, event.motion.xrel);
                     self.look_angle.v -= MOUSE_SPEED * @floatCast(f32, delta) * @intToFloat(f32, event.motion.yrel);
                 },
+                c.SDL_CONTROLLERAXISMOTION => switch (event.caxis.axis) {
+                    c.SDL_CONTROLLER_AXIS_LEFTX => self.ctrlr_axis.left_h = event.caxis.value,
+                    c.SDL_CONTROLLER_AXIS_LEFTY => self.ctrlr_axis.left_v = event.caxis.value,
+                    c.SDL_CONTROLLER_AXIS_RIGHTX => self.ctrlr_axis.right_h = event.caxis.value,
+                    c.SDL_CONTROLLER_AXIS_RIGHTY => self.ctrlr_axis.right_v = event.caxis.value,
+                    else => {},
+                },
                 else => {},
             }
         }
 
+        const ANALOG_SPEED = 5.0;
+        var look_h_amt = @intToFloat(f32, self.ctrlr_axis.right_h) / @intToFloat(f32, std.math.maxInt(i16));
+        var look_v_amt = @intToFloat(f32, self.ctrlr_axis.right_v) / @intToFloat(f32, std.math.maxInt(i16));
+        self.look_angle.h -= ANALOG_SPEED * @floatCast(f32, delta) * look_h_amt;
+        self.look_angle.v -= ANALOG_SPEED * @floatCast(f32, delta) * look_v_amt;
         var forward_amt: f32 = 0.0;
         if (self.iskeydown.forward) {
             forward_amt += 1;
@@ -261,6 +291,7 @@ pub const Screen = struct {
         if (self.iskeydown.backward) {
             forward_amt -= 1;
         }
+        forward_amt = -@intToFloat(f32, self.ctrlr_axis.left_v) / @intToFloat(f32, std.math.maxInt(i16));
         var side_amt: f32 = 0;
         if (self.iskeydown.right) {
             side_amt += 1;
@@ -268,6 +299,7 @@ pub const Screen = struct {
         if (self.iskeydown.left) {
             side_amt -= 1;
         }
+        side_amt = @intToFloat(f32, self.ctrlr_axis.left_h) / @intToFloat(f32, std.math.maxInt(i16));
         var vert_amt: f32 = 0;
         if (self.iskeydown.up) {
             vert_amt += 1;

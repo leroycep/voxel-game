@@ -14,7 +14,7 @@ const SCREEN_HEIGHT = 480;
 pub fn main() !void {
     const alloc = std.heap.c_allocator;
 
-    if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO) != 0) {
+    if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO | c.SDL_INIT_GAMECONTROLLER) != 0) {
         return sdl.logErr(error.InitFailed);
     }
     defer c.SDL_Quit();
