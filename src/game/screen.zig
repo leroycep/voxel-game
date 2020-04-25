@@ -67,32 +67,16 @@ pub const Voxels = struct {
     col: []u8,
     count: u32,
 
-    position_vbo: u32,
-    color_vbo: u32,
-
     pub fn new(alloc: *std.mem.Allocator) @This() {
         return @This(){
             .alloc = alloc,
             .pos_size = &[_]f32{},
             .col = &[_]u8{},
             .count = 0,
-            .position_vbo = 0,
-            .color_vbo = 0,
         };
     }
 
     pub fn init(self: *@This()) !void {
-        c.glGenBuffers(1, &self.position_vbo);
-        c.glGenBuffers(1, &self.color_vbo);
-
-        // VBO containing position of each voxel billboard
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
-        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(f32), null, c.GL_STREAM_DRAW);
-
-        // VBO containing color of each voxel
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
-        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * COLOR_ATTRS * @sizeOf(u8), null, c.GL_STREAM_DRAW);
-
         self.pos_size = try self.alloc.alloc(f32, MAX_VOXELS * 4);
         self.col = try self.alloc.alloc(u8, MAX_VOXELS * COLOR_ATTRS);
     }
@@ -118,6 +102,51 @@ pub const Voxels = struct {
     }
 };
 
+pub const VoxRender = struct {
+    position_vbo: u32,
+    color_vbo: u32,
+
+    pub fn new() @This() {
+        return @This(){
+            .position_vbo = 0,
+            .color_vbo = 0,
+        };
+    }
+
+    pub fn init(self: *@This()) void {
+        c.glGenBuffers(1, &self.position_vbo);
+        c.glGenBuffers(1, &self.color_vbo);
+
+        // VBO containing position of each voxel billboard
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(f32), null, c.GL_STREAM_DRAW);
+
+        // VBO containing color of each voxel
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * COLOR_ATTRS * @sizeOf(u8), null, c.GL_STREAM_DRAW);
+    }
+
+    pub fn render(self: *@This(), voxels: *Voxels) void {
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(f32), null, c.GL_STREAM_DRAW);
+        c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, voxels.count * 4 * @sizeOf(f32), voxels.pos_size.ptr);
+
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * COLOR_ATTRS * @sizeOf(u8), null, c.GL_STREAM_DRAW);
+        c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, voxels.count * COLOR_ATTRS * @sizeOf(u8), voxels.col.ptr);
+
+        // 2nd attribute buffer: position and size
+        c.glEnableVertexAttribArray(1);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
+        c.glVertexAttribPointer(1, 4, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
+        // 3rd attribute buffer: color
+        c.glEnableVertexAttribArray(2);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
+        c.glVertexAttribPointer(2, COLOR_ATTRS, c.GL_UNSIGNED_BYTE, c.GL_TRUE, 0, null);
+    }
+};
+
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
     shader: u32,
@@ -128,14 +157,8 @@ pub const Screen = struct {
     raybox_projectionMatrixUniform: i32,
     mesh_vbo: u32,
     raybox_mesh_vbo: u32,
-
-    // position_vbo: u32,
-    // color_vbo: u32,
-    // voxel_count: u32,
-    // position_size_data: []f32,
-    // color_data: []u8,
     voxels: Voxels,
-
+    voxrender: VoxRender,
     iskeydown: struct {
         forward: bool,
         backward: bool,
@@ -167,14 +190,8 @@ pub const Screen = struct {
             .raybox_projectionMatrixUniform = -1,
             .mesh_vbo = 0,
             .raybox_mesh_vbo = 0,
-
-            // .position_vbo = 0,
-            // .color_vbo = 0,
-            // .voxel_count = 0,
-            // .position_size_data = &[_]f32{},
-            // .color_data = &[_]u8{},
             .voxels = Voxels.new(alloc),
-
+            .voxrender = VoxRender.new(),
             .iskeydown = .{
                 .forward = false,
                 .backward = false,
@@ -243,6 +260,7 @@ pub const Screen = struct {
         c.glBufferData(c.GL_ARRAY_BUFFER, QUAD_VERTS.len * @sizeOf(f32), &QUAD_VERTS, c.GL_STATIC_DRAW);
 
         try self.voxels.init();
+        self.voxrender.init();
 
         self.voxels.addVoxel(Vec3f.new(.{0, 0, 0}), 1, .{255, 0, 0});
         self.voxels.addVoxel(Vec3f.new(.{0, 1, 0}), 1, .{255, 0, 0});
@@ -363,23 +381,7 @@ pub const Screen = struct {
     pub fn render(self: *@This(), ctx: platform.Context, alpha: f64) !void {
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
 
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.voxels.position_vbo);
-        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * 4 * @sizeOf(f32), null, c.GL_STREAM_DRAW);
-        c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, self.voxels.count * 4 * @sizeOf(f32), self.voxels.pos_size.ptr);
-
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.voxels.color_vbo);
-        c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * COLOR_ATTRS * @sizeOf(u8), null, c.GL_STREAM_DRAW);
-        c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, self.voxels.count * COLOR_ATTRS * @sizeOf(u8), self.voxels.col.ptr);
-
-        // 2nd attribute buffer: position and size
-        c.glEnableVertexAttribArray(1);
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.voxels.position_vbo);
-        c.glVertexAttribPointer(1, 4, c.GL_FLOAT, c.GL_FALSE, 0, null);
-
-        // 3rd attribute buffer: color
-        c.glEnableVertexAttribArray(2);
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.voxels.color_vbo);
-        c.glVertexAttribPointer(2, COLOR_ATTRS, c.GL_UNSIGNED_BYTE, c.GL_TRUE, 0, null);
+        self.voxrender.render(&self.voxels);
 
         switch (self.shader_mode) {
             .InstancedCube => try self.render_InstancedCube_shader(ctx, alpha),
