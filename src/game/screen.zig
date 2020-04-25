@@ -9,6 +9,7 @@ const cos = std.math.cos;
 
 const VERTEX_SHADER_SOURCE = @embedFile("./vertex.glsl");
 const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
+const RAYBOX_VERTEX_SOURCE = @embedFile("./raybox_vertex.glsl");
 
 const MAX_VOXELS = 1000;
 const VERTS = [_]f32{
@@ -26,6 +27,12 @@ const VERTS = [_]f32{
     0.5,  -0.5, -0.5, // Back-bottom-right
     -0.5, 0.5,  -0.5, // Back-top-left
     0.5,  0.5,  -0.5, // Back-top-right
+};
+const QUAD_VERTS = [_]f32{
+    -0.5, 0.5,
+    0.5,  0.5,
+    -0.5, -0.5,
+    0.5,  -0.5,
 };
 const COLOR_ATTRS = 3;
 
@@ -49,12 +56,21 @@ const Camera = struct {
     }
 };
 
+pub const ShaderMode = enum {
+    InstancedCube,
+    Raybox,
+};
+
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
     shader: u32,
+    raybox_shader: u32,
+    shader_mode: ShaderMode,
     camera: Camera,
     projectionMatrixUniform: i32,
+    raybox_projectionMatrixUniform: i32,
     mesh_vbo: u32,
+    raybox_mesh_vbo: u32,
     position_vbo: u32,
     color_vbo: u32,
     voxel_count: u32,
@@ -78,9 +94,13 @@ pub const Screen = struct {
         return @This(){
             .alloc = alloc,
             .shader = 0,
+            .raybox_shader = 0,
+            .shader_mode = .InstancedCube,
             .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 100),
             .projectionMatrixUniform = -1,
+            .raybox_projectionMatrixUniform = -1,
             .mesh_vbo = 0,
+            .raybox_mesh_vbo = 0,
             .position_vbo = 0,
             .color_vbo = 0,
             .voxel_count = 0,
@@ -102,6 +122,7 @@ pub const Screen = struct {
     }
 
     pub fn init(self: *@This(), ctx: platform.Context) !void {
+        // Create instanced cube shader
         const vertexShader = c.glCreateShader(c.GL_VERTEX_SHADER);
         defer c.glDeleteShader(vertexShader);
         _ = c.glShaderSource(vertexShader, 1, &(@as([:0]const u8, VERTEX_SHADER_SOURCE).ptr), null);
@@ -120,7 +141,23 @@ pub const Screen = struct {
         c.glUseProgram(self.shader);
         self.projectionMatrixUniform = c.glGetUniformLocation(self.shader, "projectionMatrix");
 
+        // Create raybox shader
+        const raybox_vertexShader = c.glCreateShader(c.GL_VERTEX_SHADER);
+        defer c.glDeleteShader(raybox_vertexShader);
+        _ = c.glShaderSource(raybox_vertexShader, 1, &(@as([:0]const u8, RAYBOX_VERTEX_SOURCE).ptr), null);
+        _ = c.glCompileShader(raybox_vertexShader);
+
+        self.raybox_shader = c.glCreateProgram();
+        c.glAttachShader(self.raybox_shader, raybox_vertexShader);
+        c.glAttachShader(self.raybox_shader, fragmentShader);
+        c.glLinkProgram(self.raybox_shader);
+
+        c.glUseProgram(self.raybox_shader);
+        self.raybox_projectionMatrixUniform = c.glGetUniformLocation(self.raybox_shader, "projectionMatrix");
+
+        // Generate vertex buffer objects
         c.glGenBuffers(1, &self.mesh_vbo);
+        c.glGenBuffers(1, &self.raybox_mesh_vbo);
         c.glGenBuffers(1, &self.position_vbo);
         c.glGenBuffers(1, &self.color_vbo);
 
@@ -128,6 +165,9 @@ pub const Screen = struct {
         // All particles share these verts using instancing
         c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
         c.glBufferData(c.GL_ARRAY_BUFFER, VERTS.len * @sizeOf(f32), &VERTS, c.GL_STATIC_DRAW);
+
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.raybox_mesh_vbo);
+        c.glBufferData(c.GL_ARRAY_BUFFER, QUAD_VERTS.len * @sizeOf(f32), &QUAD_VERTS, c.GL_STATIC_DRAW);
 
         // VBO containing position of each voxel billboard
         c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
@@ -188,6 +228,10 @@ pub const Screen = struct {
                     c.SDLK_s => self.iskeydown.backward = true,
                     c.SDLK_a => self.iskeydown.left = true,
                     c.SDLK_d => self.iskeydown.right = true,
+                    c.SDLK_h => self.shader_mode = switch (self.shader_mode) {
+                        .InstancedCube => .Raybox,
+                        .Raybox => .InstancedCube,
+                    },
                     c.SDLK_SPACE => self.iskeydown.up = true,
                     c.SDLK_LSHIFT => self.iskeydown.down = true,
                     else => {},
@@ -211,21 +255,31 @@ pub const Screen = struct {
         }
 
         var forward_amt: f32 = 0.0;
-        if (self.iskeydown.forward) {forward_amt += 1;}
-        if (self.iskeydown.backward) {forward_amt -= 1;}
+        if (self.iskeydown.forward) {
+            forward_amt += 1;
+        }
+        if (self.iskeydown.backward) {
+            forward_amt -= 1;
+        }
         var side_amt: f32 = 0;
-        if (self.iskeydown.right) {side_amt += 1;}
-        if (self.iskeydown.left) {side_amt -= 1;}
+        if (self.iskeydown.right) {
+            side_amt += 1;
+        }
+        if (self.iskeydown.left) {
+            side_amt -= 1;
+        }
         var vert_amt: f32 = 0;
-        if (self.iskeydown.up) {vert_amt += 1;}
-        if (self.iskeydown.down) {vert_amt -= 1;}
-        const forward_vec = Vec3f.new(.{self.camera.dir.items[0], 0, self.camera.dir.items[2]}).normalize();
-        const vert_vec = Vec3f.new(.{0, 1, 0}).normalize();
+        if (self.iskeydown.up) {
+            vert_amt += 1;
+        }
+        if (self.iskeydown.down) {
+            vert_amt -= 1;
+        }
+        const forward_vec = Vec3f.new(.{ self.camera.dir.items[0], 0, self.camera.dir.items[2] }).normalize();
+        const vert_vec = Vec3f.new(.{ 0, 1, 0 }).normalize();
         const side_vec = forward_vec.cross(vert_vec);
         const SPEED = 0.1;
-        const move_vec = forward_vec.scalMul(forward_amt * SPEED)
-            .add(side_vec.scalMul(side_amt * SPEED))
-            .add(vert_vec.scalMul(vert_amt * SPEED));
+        const move_vec = forward_vec.scalMul(forward_amt * SPEED).add(side_vec.scalMul(side_amt * SPEED)).add(vert_vec.scalMul(vert_amt * SPEED));
         self.camera.pos = self.camera.pos.add(move_vec);
         self.camera.dir = Vec3f.new(.{
             cos(self.look_angle.v) * sin(self.look_angle.h),
@@ -245,11 +299,6 @@ pub const Screen = struct {
         c.glBufferData(c.GL_ARRAY_BUFFER, MAX_VOXELS * COLOR_ATTRS * @sizeOf(u8), null, c.GL_STREAM_DRAW);
         c.glBufferSubData(c.GL_ARRAY_BUFFER, 0, self.voxel_count * COLOR_ATTRS * @sizeOf(u8), self.color_data.ptr);
 
-        // 1st attribute buffer: mesh vertices
-        c.glEnableVertexAttribArray(0);
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
-        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 0, null);
-
         // 2nd attribute buffer: position and size
         c.glEnableVertexAttribArray(1);
         c.glBindBuffer(c.GL_ARRAY_BUFFER, self.position_vbo);
@@ -260,6 +309,20 @@ pub const Screen = struct {
         c.glBindBuffer(c.GL_ARRAY_BUFFER, self.color_vbo);
         c.glVertexAttribPointer(2, COLOR_ATTRS, c.GL_UNSIGNED_BYTE, c.GL_TRUE, 0, null);
 
+        switch (self.shader_mode) {
+            .InstancedCube => try self.render_InstancedCube_shader(ctx, alpha),
+            .Raybox => try self.render_Raybox_shader(ctx, alpha),
+        }
+
+        c.SDL_GL_SwapWindow(ctx.window);
+    }
+
+    pub fn render_InstancedCube_shader(self: *@This(), ctx: platform.Context, alpha: f64) !void {
+        // 1st attribute buffer: mesh vertices
+        c.glEnableVertexAttribArray(0);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
+        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
         c.glUseProgram(self.shader);
 
         c.glUniformMatrix4fv(self.projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.viewProjection());
@@ -269,8 +332,23 @@ pub const Screen = struct {
         c.glVertexAttribDivisor(2, 1);
 
         c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, @divFloor(VERTS.len, 3), @intCast(c_int, self.voxel_count));
+    }
 
-        c.SDL_GL_SwapWindow(ctx.window);
+    pub fn render_Raybox_shader(self: *@This(), ctx: platform.Context, alpha: f64) !void {
+        // 1st attribute buffer: mesh vertices
+        c.glEnableVertexAttribArray(0);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.raybox_mesh_vbo);
+        c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
+        c.glUseProgram(self.raybox_shader);
+
+        c.glUniformMatrix4fv(self.raybox_projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.viewProjection());
+
+        c.glVertexAttribDivisor(0, 0);
+        c.glVertexAttribDivisor(1, 1);
+        c.glVertexAttribDivisor(2, 1);
+
+        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, @divFloor(QUAD_VERTS.len, 2), @intCast(c_int, self.voxel_count));
     }
 };
 
