@@ -10,6 +10,7 @@ const cos = std.math.cos;
 const VERTEX_SHADER_SOURCE = @embedFile("./vertex.glsl");
 const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
 const RAYBOX_VERTEX_SOURCE = @embedFile("./raybox_vertex.glsl");
+const RAYBOX_FRAGMENT_SOURCE = @embedFile("./raybox_fragment.glsl");
 
 const MAX_VOXELS = 1000;
 const VERTS = [_]f32{
@@ -51,8 +52,12 @@ const Camera = struct {
         };
     }
 
+    pub fn view(self: @This()) [16]f32 {
+        return lookAt(self.pos, self.pos.add(self.dir), self.up);
+    }
+
     pub fn viewProjection(self: @This()) [16]f32 {
-        return mat4.mul(self.projectionMatrix, lookAt(self.pos, self.pos.add(self.dir), self.up));
+        return mat4.mul(self.projectionMatrix, self.view());
     }
 };
 
@@ -69,6 +74,8 @@ pub const Screen = struct {
     camera: Camera,
     projectionMatrixUniform: i32,
     raybox_projectionMatrixUniform: i32,
+    raybox_viewMatUniform: i32,
+    raybox_camPosUniform: i32,
     mesh_vbo: u32,
     raybox_mesh_vbo: u32,
     position_vbo: u32,
@@ -105,6 +112,8 @@ pub const Screen = struct {
             .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 100),
             .projectionMatrixUniform = -1,
             .raybox_projectionMatrixUniform = -1,
+            .raybox_viewMatUniform = -1,
+            .raybox_camPosUniform = -1,
             .mesh_vbo = 0,
             .raybox_mesh_vbo = 0,
             .position_vbo = 0,
@@ -159,13 +168,20 @@ pub const Screen = struct {
         _ = c.glShaderSource(raybox_vertexShader, 1, &(@as([:0]const u8, RAYBOX_VERTEX_SOURCE).ptr), null);
         _ = c.glCompileShader(raybox_vertexShader);
 
+        const raybox_fragmentShader = c.glCreateShader(c.GL_FRAGMENT_SHADER);
+        defer c.glDeleteShader(raybox_fragmentShader);
+        _ = c.glShaderSource(raybox_fragmentShader, 1, &(@as([:0]const u8, RAYBOX_FRAGMENT_SOURCE).ptr), null);
+        _ = c.glCompileShader(raybox_fragmentShader);
+
         self.raybox_shader = c.glCreateProgram();
         c.glAttachShader(self.raybox_shader, raybox_vertexShader);
-        c.glAttachShader(self.raybox_shader, fragmentShader);
+        c.glAttachShader(self.raybox_shader, raybox_fragmentShader);
         c.glLinkProgram(self.raybox_shader);
 
         c.glUseProgram(self.raybox_shader);
         self.raybox_projectionMatrixUniform = c.glGetUniformLocation(self.raybox_shader, "projectionMatrix");
+        self.raybox_viewMatUniform = c.glGetUniformLocation(self.raybox_shader, "viewMat");
+        self.raybox_camPosUniform = c.glGetUniformLocation(self.raybox_shader, "cam_pos");
 
         // Generate vertex buffer objects
         c.glGenBuffers(1, &self.mesh_vbo);
@@ -386,6 +402,8 @@ pub const Screen = struct {
         c.glUseProgram(self.raybox_shader);
 
         c.glUniformMatrix4fv(self.raybox_projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.viewProjection());
+        c.glUniformMatrix4fv(self.raybox_viewMatUniform, 1, c.GL_FALSE, &self.camera.view());
+        c.glUniform3fv(self.raybox_camPosUniform, 1, &self.camera.pos.items);
 
         c.glVertexAttribDivisor(0, 0);
         c.glVertexAttribDivisor(1, 1);

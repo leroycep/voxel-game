@@ -5,6 +5,7 @@ layout (location = 2) in vec3 aColor;
 uniform mat4 projectionMatrix;
 
 out vec3 vColor;
+flat out mediump vec4 voxelWorldPosAndSize;
 
 void quadricProj(
     in vec3 osPosition,
@@ -49,4 +50,5 @@ void main()
 
     gl_Position = vec4(meshPos.x * size / 2.0 + pos.x, meshPos.y * size / 2.0 + pos.y, 0.0, 1.0);
     vColor = aColor;
+    voxelWorldPosAndSize = voxelPosAndSize;
 }
