@@ -3,6 +3,7 @@
 uniform highp mat4 projectionMatrix;
 uniform highp mat4 viewMat;
 uniform highp vec3 cam_pos;
+uniform highp float forward;
 
 flat in mediump vec4 voxelWorldPosAndSize;
 in mediump vec3 vColor;
@@ -117,7 +118,7 @@ void main()
     mediump vec3 cam_up = viewMat[1].xyz;
     mediump vec3 cam_forward = viewMat[2].xyz;
 
-    mediump vec3 rayOrigin = cam_pos; // + p.x * cam_sideways + p.y * cam_up + 0.01 * cam_forward;
+    mediump vec3 rayOrigin = cam_pos;
 
 #define PI 3.1415926538
 #define SCREEN_WIDTH (640.0)
@@ -125,13 +126,13 @@ void main()
     mediump vec2 p = 2.0 * vec2(gl_FragCoord.x / SCREEN_WIDTH, gl_FragCoord.y / SCREEN_HEIGHT) - vec2(1.0);
     p.x /= (SCREEN_WIDTH / SCREEN_HEIGHT * tan(0.5 * PI / 8.0));
     p.y /= tan(0.5 * PI / 8.0);
-    mediump float forward = -1.0;
+    //mediump float forward = -1.01;
 
     mediump vec3 rayDirection = normalize(p.x * cam_sideways + p.y * cam_up + forward * cam_forward);
     mediump vec3 invRayDirection = 1.0 / rayDirection;
 
     mediump vec3 boxCenter = voxelWorldPosAndSize.xyz;
-    mediump vec3 boxRadius = vec3(voxelWorldPosAndSize.w);
+    mediump vec3 boxRadius = vec3(voxelWorldPosAndSize.w / 2.0);
     mediump vec3 invBoxRadius = 1.0 / boxRadius;
     mediump mat3 rotation = mat3(
         vec3(1.0, 0.0, 0.0),
@@ -146,7 +147,9 @@ void main()
     mediump vec3 normal;
 
     if (!ourIntersectBoxCommon(box, ray, distance, normal, false, false, invRayDirection)) {
-        discard;
+        //discard;
+        gl_FragDepth = 0.9;
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
     } else {
         gl_FragDepth = distance / 100.0;
         FragColor = vec4(vColor.xyz, 1.0);
