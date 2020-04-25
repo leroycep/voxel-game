@@ -275,6 +275,16 @@ pub const Screen = struct {
                     c.SDL_CONTROLLER_AXIS_RIGHTY => self.ctrlr_axis.right_v = event.caxis.value,
                     else => {},
                 },
+                c.SDL_CONTROLLERBUTTONDOWN => switch (event.cbutton.button) {
+                    c.SDL_CONTROLLER_BUTTON_RIGHTSTICK => self.iskeydown.up = true,
+                    c.SDL_CONTROLLER_BUTTON_LEFTSTICK => self.iskeydown.down = true,
+                    else => {},
+                },
+                c.SDL_CONTROLLERBUTTONUP => switch (event.cbutton.button) {
+                    c.SDL_CONTROLLER_BUTTON_RIGHTSTICK => self.iskeydown.up = false,
+                    c.SDL_CONTROLLER_BUTTON_LEFTSTICK => self.iskeydown.down = false,
+                    else => {},
+                },
                 else => {},
             }
         }
