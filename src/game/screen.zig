@@ -78,8 +78,6 @@ pub const Screen = struct {
     raybox_camPosUniform: i32,
     raybox_nearUniform: i32,
     raybox_farUniform: i32,
-    raybox_forwardUniform: i32,
-    raybox_forward: f32,
     mesh_vbo: u32,
     raybox_mesh_vbo: u32,
     position_vbo: u32,
@@ -120,8 +118,6 @@ pub const Screen = struct {
             .raybox_camPosUniform = -1,
             .raybox_nearUniform = -1,
             .raybox_farUniform = -1,
-            .raybox_forwardUniform = -1,
-            .raybox_forward = -1.0,
             .mesh_vbo = 0,
             .raybox_mesh_vbo = 0,
             .position_vbo = 0,
@@ -192,7 +188,6 @@ pub const Screen = struct {
         self.raybox_camPosUniform = c.glGetUniformLocation(self.raybox_shader, "cam_pos");
         self.raybox_nearUniform = c.glGetUniformLocation(self.raybox_shader, "near");
         self.raybox_farUniform = c.glGetUniformLocation(self.raybox_shader, "far");
-        self.raybox_forwardUniform = c.glGetUniformLocation(self.raybox_shader, "forward");
 
         // Generate vertex buffer objects
         c.glGenBuffers(1, &self.mesh_vbo);
@@ -297,18 +292,6 @@ pub const Screen = struct {
                     },
                     c.SDLK_SPACE => self.iskeydown.up = true,
                     c.SDLK_LSHIFT => self.iskeydown.down = true,
-                    c.SDLK_u => self.raybox_forward -= 0.05,
-                    c.SDLK_i => self.raybox_forward += 0.05,
-                    c.SDLK_p => {
-                        const mat = self.camera.viewProjection();
-                        std.debug.warn("\n", .{});
-                        std.debug.warn("projectionMatrix \n", .{});
-                        comptime var i = 0;
-                        inline while (i < 4) : (i += 1) {
-                            std.debug.warn("  {d:.03}\t{d:.03}\t{d:.03}\t{d:.03}\n", .{ mat[4 * i + 0], mat[4 * i + 1], mat[4 * i + 2], mat[4 * i + 3] });
-                        }
-                        std.debug.warn("\n", .{});
-                    },
                     else => {},
                 },
                 c.SDL_KEYUP => switch (event.key.keysym.sym) {
@@ -352,15 +335,6 @@ pub const Screen = struct {
         self.look_angle.h -= ANALOG_SPEED * @floatCast(f32, delta) * look_h_amt;
         self.look_angle.v -= ANALOG_SPEED * @floatCast(f32, delta) * look_v_amt;
         self.look_angle.v = std.math.clamp(self.look_angle.v, @as(f32, -std.math.pi * 2.0 / 5.0), std.math.pi * 2.0 / 5.0);
-
-        std.debug.warn("\r pos: <{d:.2},{d:.2},{d:.2}> dir: <{d:.2},{d:.2},{d:.2}>", .{
-            self.camera.pos.items[0],
-            self.camera.pos.items[1],
-            self.camera.pos.items[2],
-            self.camera.dir.items[0],
-            self.camera.dir.items[1],
-            self.camera.dir.items[2],
-        });
 
         var forward_amt: f32 = 0.0;
         forward_amt = -@intToFloat(f32, self.ctrlr_axis.left_v) / @intToFloat(f32, std.math.maxInt(i16));
@@ -455,7 +429,6 @@ pub const Screen = struct {
         c.glUniformMatrix4fv(self.raybox_projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.viewProjection());
         c.glUniformMatrix4fv(self.raybox_viewMatUniform, 1, c.GL_FALSE, &self.camera.view());
         c.glUniform3fv(self.raybox_camPosUniform, 1, &self.camera.pos.items);
-        c.glUniform1f(self.raybox_forwardUniform, self.raybox_forward);
         c.glUniform1f(self.raybox_nearUniform, 0.01);
         c.glUniform1f(self.raybox_farUniform, 100);
 

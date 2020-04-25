@@ -2,20 +2,18 @@
 layout (location = 0) in vec2 meshPos;
 layout (location = 1) in vec4 voxelPosAndSize;
 layout (location = 2) in vec3 aColor;
+
 uniform mat4 projectionMatrix;
 uniform mat4 viewMat;
-uniform float near;
-uniform float far;
 
-out vec3 vColor;
-out vec3 origin;
 out vec3 ray;
+out vec3 vColor;
 flat out mediump vec4 voxelWorldPosAndSize;
 
 void quadricProj(
     in vec3 osPosition,
     in float voxelSize,
-    in mat4 objectToScreenMatrix,
+    in mat4 modelViewProj,
     in vec2 halfScreenSize,
     inout vec4 position,
     inout float pointSize)
@@ -23,7 +21,6 @@ void quadricProj(
     const vec4 quadricMat = vec4(1.0, 1.0, 1.0, -1.0);
     float sphereRadius = voxelSize * 1.732051;
     vec4 sphereCenter = vec4(osPosition.xyz, 1.0);
-    mat4 modelViewProj = transpose(objectToScreenMatrix);
 
     mat3x4 matT = mat3x4( mat3(modelViewProj[0].xyz, modelViewProj[1].xyz, modelViewProj[3].xyz) * sphereRadius);
     matT[0].w = dot(sphereCenter, modelViewProj[0]);
@@ -51,12 +48,15 @@ void main()
 { 
     vec4 pos = vec4(0.0, 0.0, 0.0, 1.0);
     float size = 0.0;
-    quadricProj(voxelPosAndSize.xyz, voxelPosAndSize.w, transpose(projectionMatrix), vec2(1.0, 1.0), pos, size);
+    quadricProj(voxelPosAndSize.xyz, voxelPosAndSize.w, projectionMatrix, vec2(1.0, 1.0), pos, size);
     pos.xy += meshPos.xy * size / 2.0;
 
+    vec3 cam_sideways = viewMat[0].xyz;
+    vec3 cam_up = viewMat[1].xyz;
+    vec3 cam_forward = viewMat[2].xyz;
+
     gl_Position = vec4(pos.xy, 0.0, 1.0);
-    origin = (inverse(projectionMatrix) * vec4(pos.xy, -1.0, 1.0) * near).xyz;
-    ray = (inverse(projectionMatrix) * (vec4(pos.xy, 1.0, 1.0) * far - vec4(pos.xy, -1.0, 1.0) * near)).xyz;
+    ray = pos.x * cam_sideways + pos.y * cam_up - 1.0 * cam_forward;
     vColor = aColor;
     voxelWorldPosAndSize = voxelPosAndSize;
 }
