@@ -3,8 +3,13 @@ layout (location = 0) in vec2 meshPos;
 layout (location = 1) in vec4 voxelPosAndSize;
 layout (location = 2) in vec3 aColor;
 uniform mat4 projectionMatrix;
+uniform mat4 viewMat;
+uniform float near;
+uniform float far;
 
 out vec3 vColor;
+out vec3 origin;
+out vec3 ray;
 flat out mediump vec4 voxelWorldPosAndSize;
 
 void quadricProj(
@@ -47,8 +52,11 @@ void main()
     vec4 pos = vec4(0.0, 0.0, 0.0, 1.0);
     float size = 0.0;
     quadricProj(voxelPosAndSize.xyz, voxelPosAndSize.w, transpose(projectionMatrix), vec2(1.0, 1.0), pos, size);
+    pos.xy += meshPos.xy * size / 2.0;
 
-    gl_Position = vec4(meshPos.x * size / 2.0 + pos.x, meshPos.y * size / 2.0 + pos.y, 0.0, 1.0);
+    gl_Position = vec4(pos.xy, 0.0, 1.0);
+    origin = (inverse(projectionMatrix) * vec4(pos.xy, -1.0, 1.0) * near).xyz;
+    ray = (inverse(projectionMatrix) * (vec4(pos.xy, 1.0, 1.0) * far - vec4(pos.xy, -1.0, 1.0) * near)).xyz;
     vColor = aColor;
     voxelWorldPosAndSize = voxelPosAndSize;
 }
