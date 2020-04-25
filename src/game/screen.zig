@@ -294,6 +294,7 @@ pub const Screen = struct {
         var look_v_amt = @intToFloat(f32, self.ctrlr_axis.right_v) / @intToFloat(f32, std.math.maxInt(i16));
         self.look_angle.h -= ANALOG_SPEED * @floatCast(f32, delta) * look_h_amt;
         self.look_angle.v -= ANALOG_SPEED * @floatCast(f32, delta) * look_v_amt;
+        self.look_angle.v = std.math.clamp(self.look_angle.v, @as(f32, -std.math.pi * 2.0 / 5.0), std.math.pi * 2.0 / 5.0);
         var forward_amt: f32 = 0.0;
         if (self.iskeydown.forward) {
             forward_amt += 1;
