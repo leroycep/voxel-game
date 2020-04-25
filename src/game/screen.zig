@@ -4,6 +4,8 @@ const platform = @import("../platform.zig");
 const Vec3 = @import("../utils/vec3.zig").Vec3;
 const Vec3f = Vec3(f32);
 const mat4 = @import("../utils/mat4.zig");
+const sin = std.math.sin;
+const cos = std.math.cos;
 
 const VERTEX_SHADER_SOURCE = @embedFile("./vertex.glsl");
 const FRAGMENT_SHADER_SOURCE = @embedFile("./fragment.glsl");
@@ -58,6 +60,18 @@ pub const Screen = struct {
     voxel_count: u32,
     position_size_data: []f32,
     color_data: []u8,
+    iskeydown: struct {
+        forward: bool,
+        backward: bool,
+        left: bool,
+        right: bool,
+        up: bool,
+        down: bool,
+    },
+    look_angle: struct {
+        h: f32,
+        v: f32,
+    },
 
     pub fn new(alloc: *std.mem.Allocator) @This() {
         const camerapos = Vec3f.new(.{ 5, 0, -10 });
@@ -72,6 +86,18 @@ pub const Screen = struct {
             .voxel_count = 0,
             .position_size_data = &[_]f32{},
             .color_data = &[_]u8{},
+            .iskeydown = .{
+                .forward = false,
+                .backward = false,
+                .left = false,
+                .right = false,
+                .up = false,
+                .down = false,
+            },
+            .look_angle = .{
+                .h = 0.0,
+                .v = 0.0,
+            },
         };
     }
 
@@ -142,6 +168,8 @@ pub const Screen = struct {
         self.color_data[8] = 255;
 
         self.voxel_count = 3;
+
+        _ = c.SDL_SetRelativeMouseMode(.SDL_TRUE);
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {
@@ -154,18 +182,56 @@ pub const Screen = struct {
         while (c.SDL_PollEvent(&event) != 0) {
             switch (event.@"type") {
                 c.SDL_QUIT => ctx.should_quit.* = true,
-                c.SDL_KEYDOWN => if (event.key.keysym.sym == c.SDLK_ESCAPE) {
-                    ctx.should_quit.* = true;
+                c.SDL_KEYDOWN => switch (event.key.keysym.sym) {
+                    c.SDLK_ESCAPE => ctx.should_quit.* = true,
+                    c.SDLK_w => self.iskeydown.forward = true,
+                    c.SDLK_s => self.iskeydown.backward = true,
+                    c.SDLK_a => self.iskeydown.left = true,
+                    c.SDLK_d => self.iskeydown.right = true,
+                    c.SDLK_SPACE => self.iskeydown.up = true,
+                    c.SDLK_LSHIFT => self.iskeydown.down = true,
+                    else => {},
+                },
+                c.SDL_KEYUP => switch (event.key.keysym.sym) {
+                    c.SDLK_w => self.iskeydown.forward = false,
+                    c.SDLK_s => self.iskeydown.backward = false,
+                    c.SDLK_a => self.iskeydown.left = false,
+                    c.SDLK_d => self.iskeydown.right = false,
+                    c.SDLK_SPACE => self.iskeydown.up = false,
+                    c.SDLK_LSHIFT => self.iskeydown.down = false,
+                    else => {},
+                },
+                c.SDL_MOUSEMOTION => {
+                    const MOUSE_SPEED = 0.1;
+                    self.look_angle.h -= MOUSE_SPEED * @floatCast(f32, delta) * @intToFloat(f32, event.motion.xrel);
+                    self.look_angle.v -= MOUSE_SPEED * @floatCast(f32, delta) * @intToFloat(f32, event.motion.yrel);
                 },
                 else => {},
             }
         }
 
-        const radius = 10;
-        self.camera.pos.items[0] = std.math.sin(@floatCast(f32, tickTime)) * radius;
-        self.camera.pos.items[1] = 10;
-        self.camera.pos.items[2] = std.math.cos(@floatCast(f32, tickTime)) * radius;
-        self.camera.dir = Vec3f.new(.{ 0, 0, 0 }).sub(self.camera.pos).normalize();
+        var forward_amt: f32 = 0.0;
+        if (self.iskeydown.forward) {forward_amt += 1;}
+        if (self.iskeydown.backward) {forward_amt -= 1;}
+        var side_amt: f32 = 0;
+        if (self.iskeydown.right) {side_amt += 1;}
+        if (self.iskeydown.left) {side_amt -= 1;}
+        var vert_amt: f32 = 0;
+        if (self.iskeydown.up) {vert_amt += 1;}
+        if (self.iskeydown.down) {vert_amt -= 1;}
+        const forward_vec = Vec3f.new(.{self.camera.dir.items[0], 0, self.camera.dir.items[2]}).normalize();
+        const vert_vec = Vec3f.new(.{0, 1, 0}).normalize();
+        const side_vec = forward_vec.cross(vert_vec);
+        const SPEED = 0.1;
+        const move_vec = forward_vec.scalMul(forward_amt * SPEED)
+            .add(side_vec.scalMul(side_amt * SPEED))
+            .add(vert_vec.scalMul(vert_amt * SPEED));
+        self.camera.pos = self.camera.pos.add(move_vec);
+        self.camera.dir = Vec3f.new(.{
+            cos(self.look_angle.v) * sin(self.look_angle.h),
+            sin(self.look_angle.v),
+            cos(self.look_angle.v) * cos(self.look_angle.h),
+        });
     }
 
     pub fn render(self: *@This(), ctx: platform.Context, alpha: f64) !void {
