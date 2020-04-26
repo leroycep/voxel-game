@@ -96,6 +96,29 @@ pub const Voxels = struct {
     }
 };
 
+fn noiseChunk(chunk: *Voxels) void {
+    var x: u8 = 0;
+    while (x < 32) : (x += 1) {
+        var z: u8 = 0;
+        while (z < 32) : (z += 1) {
+            var fx = @intToFloat(f32, x) + chunk.pos.items[0];
+            var fz = @intToFloat(f32, z) + chunk.pos.items[2];
+            var sample = c.stb_perlin_noise3(fx / 32, 1.0 / 32.0, fz / 32, 0, 0, 0);
+
+            var y: u8 = 0;
+            while (y < 32) : (y += 1) {
+                var fy: f32 = @intToFloat(f32, y);
+                if (fy < sample * 15 + 15) {
+                    chunk.set(Vec3(u8).new(.{ x, y, z }), 1);
+                } else {
+                    chunk.set(Vec3(u8).new(.{ x, y, z }), 0);
+                }
+            }
+        }
+    }
+
+}
+
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
     camera: Camera,
@@ -124,8 +147,8 @@ pub const Screen = struct {
         const camerapos = Vec3f.new(.{ 5, 0, -10 });
         return @This(){
             .alloc = alloc,
-            .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 1000),
-            .voxels = std.ArrayList(Voxels).init(alloc), //Voxels.new(Vec3f.new(.{0, 0, 0})),
+            .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 10000),
+            .voxels = std.ArrayList(Voxels).init(alloc),
             .voxel_batch = undefined,
             .iskeydown = .{
                 .forward = false,
@@ -150,49 +173,14 @@ pub const Screen = struct {
 
     pub fn init(self: *@This(), ctx: platform.Context) !void {
         try self.voxel_batch.init();
-        const voxels1 = try self.voxels.addOne();
-        try voxels1.init(self.alloc, Vec3f.new(.{ 0, 0, 0 }));
 
-        var x: u8 = 0;
-        var y: u8 = 0;
-        var z: u8 = 0;
-        var count: usize = 0;
-        while (z < 32) {
-            var fx = @intToFloat(f32, x);
-            var fy = @intToFloat(f32, y);
-            var fz = @intToFloat(f32, z);
-            var sample = c.stb_perlin_noise3(fx / 11, fy / 11, fz / 11, 0, 0, 0);
-            if (sample > 0.2) {
-                count += 1;
-                voxels1.set(Vec3(u8).new(.{ x, y, z }), 1);
-            } else {
-                voxels1.set(Vec3(u8).new(.{ x, y, z }), 0);
-            }
-            x += 1;
-            if (x >= 32) {
-                x = 0;
-                y += 1;
-            }
-            if (y >= 32) {
-                x = 0;
-                y = 0;
-                z += 1;
-            }
-        }
-
-        var x1: f32 = 1;
-        var z1: f32 = 0;
-        while (z1 < 10) {
-            const voxels = try self.voxels.addOne();
-            voxels.data = try self.alloc.create([32 * 32 * 32]u8);
-            std.mem.copy(u8, voxels.data[0..], voxels1.data[0..]);
-            voxels.pos = Vec3f.new(.{ x1 * 32, 0, z1 * 32 });
-            voxels.mesh = null;
-
-            x1 += 1;
-            if (x1 > 10) {
-                x1 = 0;
-                z1 += 1;
+        var x: f32 = 0;
+        while (x < 10) : (x += 1) {
+            var z: f32 = 0;
+            while (z < 10) : (z += 1) {
+                const chunk = try self.voxels.addOne();
+                try chunk.init(self.alloc, Vec3f.new(.{x * 32, 0, z * 32}));
+                noiseChunk(chunk);
             }
         }
 
@@ -338,4 +326,5 @@ pub const Screen = struct {
             self.voxel_batch.drawMesh(voxels.mesh.?);
         }
     }
+
 };
