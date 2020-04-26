@@ -49,11 +49,53 @@ void main()
     vec4 pos = vec4(0.0, 0.0, 0.0, 1.0);
     float size = 0.0;
     quadricProj(voxelPosAndSize.xyz, voxelPosAndSize.w, viewMat * projMat, vec2(1.0, 1.0), pos, size);
-    pos.xy += meshPos.xy * size / 2.0;
 
     vec3 cam_sideways = viewMat[0].xyz;
     vec3 cam_up = viewMat[1].xyz;
     vec3 cam_forward = viewMat[2].xyz;
+
+    if (size > (60.0 / 480.0)) {
+        vec3 p = voxelPosAndSize.xyz;
+        float e = voxelPosAndSize.w / 2.0;
+
+        vec4 v0 = (vec4(p + vec3( e, e, e), 1.0) * viewMat * projMat);
+        vec4 v1 = (vec4(p + vec3( e, e,-e), 1.0) * viewMat * projMat);
+        vec4 v2 = (vec4(p + vec3( e,-e, e), 1.0) * viewMat * projMat);
+        vec4 v3 = (vec4(p + vec3( e,-e,-e), 1.0) * viewMat * projMat);
+        vec4 v4 = (vec4(p + vec3(-e, e, e), 1.0) * viewMat * projMat);
+        vec4 v5 = (vec4(p + vec3(-e, e,-e), 1.0) * viewMat * projMat);
+        vec4 v6 = (vec4(p + vec3(-e,-e, e), 1.0) * viewMat * projMat);
+        vec4 v7 = (vec4(p + vec3(-e,-e,-e), 1.0) * viewMat * projMat);
+
+        if(min(min(min(v0.z, v1.z), min(v2.z, v3.z)), min(min(v4.z, v5.z), min(v6.z, v7.z))) < 0.0) {
+            gl_Position = vec4(0.0, 0.0, 2.0, 0.0);
+            return;
+        }
+
+        vec2 c0 = v0.xy / v0.w;
+        vec2 c1 = v1.xy / v1.w;
+        vec2 c2 = v2.xy / v2.w;
+        vec2 c3 = v3.xy / v3.w;
+        vec2 c4 = v4.xy / v4.w;
+        vec2 c5 = v5.xy / v5.w;
+        vec2 c6 = v6.xy / v6.w;
+        vec2 c7 = v7.xy / v7.w;
+
+        vec2 min = vec2(
+            min(min(min(c0.x, c1.x), min(c2.x, c3.x)), min(min(c4.x, c5.x), min(c6.x, c7.x))),
+            min(min(min(c0.y, c1.y), min(c2.y, c3.y)), min(min(c4.y, c5.y), min(c6.y, c7.y)))
+        );
+
+        vec2 max = vec2(
+            max(max(max(c0.x, c1.x), max(c2.x, c3.x)), max(max(c4.x, c5.x), max(c6.x, c7.x))),
+            max(max(max(c0.y, c1.y), max(c2.y, c3.y)), max(max(c4.y, c5.y), max(c6.y, c7.y)))
+        );
+
+        pos.xy = (max + min) / 2.0;
+        pos.xy += meshPos.xy * (max - min);
+    } else {
+        pos.xy += meshPos.xy * size / 2.0;
+    }
 
     gl_Position = vec4(pos.xy, 0.0, 1.0);
     ray = pos.x * cam_sideways + pos.y * cam_up - 1.0 * cam_forward;
