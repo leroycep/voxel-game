@@ -6,9 +6,12 @@ const Cpu = std.Target.Cpu;
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
 
-    const exe = b.addExecutable("snake-game", "src/main.zig");
+    const exe = b.addExecutable("voxel-game", "src/main.zig");
     exe.setBuildMode(b.standardReleaseOptions());
     exe.setTarget(target);
+    exe.addIncludeDir("lib");
+    const lib_cflags = &[_][]const u8{};
+    exe.addCSourceFile("lib/stb_perlin.c", lib_cflags);
     exe.linkSystemLibrary("SDL2");
     exe.linkSystemLibrary("freetype");
     exe.linkSystemLibrary("epoxy");
