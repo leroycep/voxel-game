@@ -69,15 +69,39 @@ pub const VoxelBatch = struct {
         _ = c.glShaderSource(vertexShader, 1, &(@as([:0]const u8, RAYBOX_VERTEX_SOURCE).ptr), null);
         _ = c.glCompileShader(vertexShader);
 
+        if (!getShaderCompileStatus(vertexShader)) {
+            var infoLog: [512]u8 = [_]u8{0} ** 512;
+            var infoLen: c.GLsizei = 0;
+            c.glGetShaderInfoLog(vertexShader, infoLog.len, &infoLen, &infoLog);
+            std.debug.warn("Error compiling vertex shader: {}\n", .{infoLog[0..@intCast(usize, infoLen)]});
+            return error.VertexShaderCompile;
+        }
+
         const fragmentShader = c.glCreateShader(c.GL_FRAGMENT_SHADER);
         defer c.glDeleteShader(fragmentShader);
         _ = c.glShaderSource(fragmentShader, 1, &(@as([:0]const u8, RAYBOX_FRAGMENT_SOURCE).ptr), null);
         _ = c.glCompileShader(fragmentShader);
 
+        if (!getShaderCompileStatus(fragmentShader)) {
+            var infoLog: [512]u8 = [_]u8{0} ** 512;
+            var infoLen: c.GLsizei = 0;
+            c.glGetShaderInfoLog(fragmentShader, infoLog.len, &infoLen, &infoLog);
+            std.debug.warn("Error compiling fragment shader: {}\n", .{infoLog[0..@intCast(usize, infoLen)]});
+            return error.FragmentShaderCompile;
+        }
+
         self.shader = c.glCreateProgram();
         c.glAttachShader(self.shader, vertexShader);
         c.glAttachShader(self.shader, fragmentShader);
         c.glLinkProgram(self.shader);
+
+        if (!getProgramLinkStatus(self.shader)) {
+            var infoLog: [512]u8 = [_]u8{0} ** 512;
+            var infoLen: c.GLsizei = 0;
+            c.glGetProgramInfoLog(self.shader, infoLog.len, &infoLen, &infoLog);
+            std.debug.warn("Error linking shader program: {}\n", .{infoLog[0..@intCast(usize, infoLen)]});
+            return error.ShaderLink;
+        }
 
         c.glUseProgram(self.shader);
         self.uniforms.projMat = c.glGetUniformLocation(self.shader, "projMat");
@@ -211,4 +235,16 @@ fn lookAt(eye: Vec3f, target: Vec3f, up: Vec3f) [16]f32 {
     res[4 * 3 + 2] = 0;
 
     return res;
+}
+
+pub fn getShaderCompileStatus(shader: c.GLuint) bool {
+    var success: c.GLint = undefined;
+    c.glGetShaderiv(shader, c.GL_COMPILE_STATUS, &success);
+    return success == c.GL_TRUE;
+}
+
+pub fn getProgramLinkStatus(program: c.GLuint) bool {
+    var success: c.GLint = undefined;
+    c.glGetProgramiv(program, c.GL_LINK_STATUS, &success);
+    return success == c.GL_TRUE;
 }
