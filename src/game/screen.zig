@@ -42,18 +42,8 @@ pub const Voxels = struct {
             if (self.i >= CHUNK_SIZE) return null;
             const cur = self.i;
             self.i += 1;
-            self.x += 1;
-            if (self.x >= CHUNK_W) {
-                self.x = 0;
-                self.y += 1;
-            }
-            if (self.y >= CHUNK_H) {
-                self.x = 0;
-                self.y = 0;
-                self.z += 1;
-            }
             return VoxVal{
-                .pos = Vec3(u8).new(.{ self.x, self.y, self.z }),
+                .pos = Voxels.i2pos(cur),
                 .val = self.parent.data[cur],
             };
         }
@@ -77,18 +67,32 @@ pub const Voxels = struct {
         alloc.destroy(self.data);
     }
 
-    fn pos2i(pos: Vec3(u8)) usize {
+    pub fn pos2i(pos: Vec3(u8)) usize {
         var x: usize = pos.items[0];
         var y: usize = @as(usize, pos.items[1]) * CHUNK_W;
         var z: usize = @as(usize, pos.items[2]) * CHUNK_W * CHUNK_H;
         return x + y + z;
     }
 
+    pub fn i2pos(i: usize) Vec3(u8) {
+        var z = i / (CHUNK_W * CHUNK_H);
+        var idx = i - (z * CHUNK_W * CHUNK_H);
+        var y = idx / CHUNK_H;
+        var x = idx % CHUNK_W;
+        return Vec3(u8).new(.{@truncate(u8, x), @truncate(u8, y), @truncate(u8, z)});
+    }
+
     pub fn set(self: *@This(), pos: Vec3(u8), val: u8) void {
+        if (pos.items[0] < 0 or pos.items[0] >= CHUNK_W) return;
+        if (pos.items[1] < 0 or pos.items[1] >= CHUNK_H) return;
+        if (pos.items[2] < 0 or pos.items[2] >= CHUNK_D) return;
         self.data[pos2i(pos)] = val;
     }
 
     pub fn get(self: *@This(), pos: Vec3(u8)) u8 {
+        if (pos.items[0] < 0 or pos.items[0] >= CHUNK_W) return 0;
+        if (pos.items[1] < 0 or pos.items[1] >= CHUNK_H) return 0;
+        if (pos.items[2] < 0 or pos.items[2] >= CHUNK_D) return 0;
         return self.data[pos2i(pos)];
     }
 };
@@ -104,13 +108,12 @@ fn noiseChunk(chunk: *Voxels) void {
 
             var y: u8 = 0;
             var fy: f32 = @intToFloat(f32, y);
-            while (fy < sample * 15 + 15 and y < CHUNK_H) : (y += 1) {
+            while (y < CHUNK_H and fy < sample * 15 + 15) : (y += 1) {
                 fy = @intToFloat(f32, y);
                 chunk.set(Vec3(u8).new(.{ x, y, z }), 1);
             }
         }
     }
-
 }
 
 pub const Screen = struct {
@@ -292,7 +295,7 @@ pub const Screen = struct {
 
         self.voxel_batch.camera = self.camera;
         self.voxel_batch.begin();
-        self.voxel_batch.drawVoxel(Vec3f.new(.{ 0, 0, 0 }), 1, .{ 0, 255, 0 });
+        //self.voxel_batch.drawVoxel(Vec3f.new(.{ 0, 0, 0 }), 1, .{ 0, 255, 0 });
         for (self.voxels.items) |*voxels| {
             try self.renderVoxels(voxels);
         }
@@ -301,23 +304,47 @@ pub const Screen = struct {
         c.SDL_GL_SwapWindow(ctx.window);
     }
 
-    pub fn renderVoxels(self: *@This(), voxels: *Voxels) !void {
-        if (voxels.mesh) |mesh| {
+    pub fn renderVoxels(self: *@This(), chunk: *Voxels) !void {
+        if (chunk.mesh) |mesh| {
             self.voxel_batch.drawMesh(mesh);
         } else {
             var mesh_builder = VoxelBatch.MeshBuilder.new(self.alloc);
-            var it = voxels.it();
+            var it = chunk.it();
             while (it.next()) |val| {
                 if (val.val != 0) {
-                    const x = voxels.pos.items[0] + @intToFloat(f32, val.pos.items[0]);
-                    const y = voxels.pos.items[1] + @intToFloat(f32, val.pos.items[1]);
-                    const z = voxels.pos.items[2] + @intToFloat(f32, val.pos.items[2]);
-                    const pos = Vec3f.new(.{ x, y, z });
-                    try mesh_builder.addVoxel(pos, 1, .{ 120, 24, 60 });
+                    const x = val.pos.items[0];
+                    const y = val.pos.items[1];
+                    const z = val.pos.items[2];
+
+                    const xneg = (x > 0
+                                      and chunk.get(Vec3(u8).new(.{x - 1, y, z})) != 0);
+                    const xpos = (x < CHUNK_W - 1
+                                      and chunk.get(Vec3(u8).new(.{x + 1, y, z})) != 0);
+
+                    const yneg = (y > 0
+                                      and chunk.get(Vec3(u8).new(.{x, y - 1, z})) != 0);
+                    const ypos = (y < CHUNK_H - 1
+                                      and chunk.get(Vec3(u8).new(.{x, y + 1, z})) != 0);
+
+                    const zneg = (z > 0
+                                      and chunk.get(Vec3(u8).new(.{x, y, z - 1})) != 0);
+                    const zpos = (z < CHUNK_D - 1
+                                      and chunk.get(Vec3(u8).new(.{x, y, z + 1})) != 0);
+
+                    var color: [3]u8 = .{ 120, 24, 60 };
+                    if (xneg and xpos
+                            and yneg and ypos
+                            and zneg and zpos) continue;//color = .{60, 24, 120};
+
+                    const fx = chunk.pos.items[0] + @intToFloat(f32, val.pos.items[0]);
+                    const fy = chunk.pos.items[1] + @intToFloat(f32, val.pos.items[1]);
+                    const fz = chunk.pos.items[2] + @intToFloat(f32, val.pos.items[2]);
+                    const pos = Vec3f.new(.{ fx, fy, fz });
+                    try mesh_builder.addVoxel(pos, 1, color);
                 }
             }
-            voxels.mesh = mesh_builder.finish();
-            self.voxel_batch.drawMesh(voxels.mesh.?);
+            chunk.mesh = mesh_builder.finish();
+            self.voxel_batch.drawMesh(chunk.mesh.?);
         }
     }
 
