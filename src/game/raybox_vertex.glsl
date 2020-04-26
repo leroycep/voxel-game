@@ -3,7 +3,7 @@ layout (location = 0) in vec2 meshPos;
 layout (location = 1) in vec4 voxelPosAndSize;
 layout (location = 2) in vec3 aColor;
 
-uniform mat4 projectionMatrix;
+uniform mat4 projMat;
 uniform mat4 viewMat;
 
 out vec3 ray;
@@ -48,7 +48,7 @@ void main()
 { 
     vec4 pos = vec4(0.0, 0.0, 0.0, 1.0);
     float size = 0.0;
-    quadricProj(voxelPosAndSize.xyz, voxelPosAndSize.w, projectionMatrix, vec2(1.0, 1.0), pos, size);
+    quadricProj(voxelPosAndSize.xyz, voxelPosAndSize.w, viewMat * projMat, vec2(1.0, 1.0), pos, size);
     pos.xy += meshPos.xy * size / 2.0;
 
     vec3 cam_sideways = viewMat[0].xyz;

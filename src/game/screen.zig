@@ -38,14 +38,14 @@ const QUAD_VERTS = [_]f32{
 const COLOR_ATTRS = 3;
 
 const Camera = struct {
-    projectionMatrix: [16]f32,
+    projMat: [16]f32,
     pos: Vec3f,
     dir: Vec3f,
     up: Vec3f,
 
     fn init(pos: Vec3f, fov: f32, aspect: f32, zNear: f32, zFar: f32) @This() {
         return @This(){
-            .projectionMatrix = perspective(fov, aspect, zNear, zFar),
+            .projMat = perspective(fov, aspect, zNear, zFar),
             .pos = pos,
             .dir = Vec3f.new(.{ 0, 0, 1 }),
             .up = Vec3f.new(.{ 0, 1, 0 }),
@@ -57,7 +57,7 @@ const Camera = struct {
     }
 
     pub fn viewProjection(self: @This()) [16]f32 {
-        return mat4.mul(self.projectionMatrix, self.view());
+        return mat4.mul(self.projMat, self.view());
     }
 };
 
@@ -183,7 +183,7 @@ pub const Screen = struct {
         c.glLinkProgram(self.raybox_shader);
 
         c.glUseProgram(self.raybox_shader);
-        self.raybox_projectionMatrixUniform = c.glGetUniformLocation(self.raybox_shader, "projectionMatrix");
+        self.raybox_projectionMatrixUniform = c.glGetUniformLocation(self.raybox_shader, "projMat");
         self.raybox_viewMatUniform = c.glGetUniformLocation(self.raybox_shader, "viewMat");
         self.raybox_camPosUniform = c.glGetUniformLocation(self.raybox_shader, "cam_pos");
         self.raybox_nearUniform = c.glGetUniformLocation(self.raybox_shader, "near");
@@ -426,7 +426,7 @@ pub const Screen = struct {
 
         c.glUseProgram(self.raybox_shader);
 
-        c.glUniformMatrix4fv(self.raybox_projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.viewProjection());
+        c.glUniformMatrix4fv(self.raybox_projectionMatrixUniform, 1, c.GL_FALSE, &self.camera.projMat);
         c.glUniformMatrix4fv(self.raybox_viewMatUniform, 1, c.GL_FALSE, &self.camera.view());
         c.glUniform3fv(self.raybox_camPosUniform, 1, &self.camera.pos.items);
         c.glUniform1f(self.raybox_nearUniform, 0.01);
