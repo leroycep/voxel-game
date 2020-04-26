@@ -62,6 +62,58 @@ pub const VoxelBatch = struct {
     pos_size_data: [MAX_VOXELS * POS_SIZE_ATTRS]f32 = undefined,
     color_data: [MAX_VOXELS * COLOR_ATTRS]u8 = undefined,
 
+    pub const MeshBuilder = struct {
+        pos_size_data: std.ArrayList(f32),
+        color_data: std.ArrayList(u8),
+        voxel_count: usize,
+
+        pub fn new(alloc: *std.mem.Allocator) @This() {
+            return .{
+                .pos_size_data = std.ArrayList(f32).init(alloc),
+                .color_data = std.ArrayList(u8).init(alloc),
+                .voxel_count = 0,
+            };
+        }
+
+        pub fn addVoxel(self: *@This(), pos: Vec3f, size: f32, color: [3]u8) !void {
+            try self.pos_size_data.appendSlice(&pos.items);
+            try self.pos_size_data.append(size);
+
+            try self.color_data.appendSlice(&color);
+
+            self.voxel_count += 1;
+        }
+
+        pub fn finish(self: *@This()) Mesh {
+            var mesh: Mesh = undefined;
+            mesh.voxel_count = self.voxel_count;
+            c.glGenBuffers(1, &mesh.position_vbo);
+            c.glGenBuffers(1, &mesh.color_vbo);
+
+            c.glBindBuffer(c.GL_ARRAY_BUFFER, mesh.position_vbo);
+            c.glBufferData(c.GL_ARRAY_BUFFER, @intCast(c_long, self.pos_size_data.items.len * @sizeOf(f32)), self.pos_size_data.items.ptr, c.GL_STATIC_DRAW);
+
+            c.glBindBuffer(c.GL_ARRAY_BUFFER, mesh.color_vbo);
+            c.glBufferData(c.GL_ARRAY_BUFFER, @intCast(c_long, self.color_data.items.len * @sizeOf(u8)), self.color_data.items.ptr, c.GL_STATIC_DRAW);
+
+            self.pos_size_data.deinit();
+            self.color_data.deinit();
+
+            return mesh;
+        }
+    };
+
+    pub const Mesh = struct {
+        position_vbo: u32,
+        color_vbo: u32,
+        voxel_count: usize,
+
+        pub fn deinit(self: *@This()) void {
+            c.glDeleteBuffers(1, &self.position_vbo);
+            c.glDeleteBuffers(1, &self.color_vbo);
+        }
+    };
+
     pub fn init(self: *@This()) !void {
         // Create raybox shader
         const vertexShader = c.glCreateShader(c.GL_VERTEX_SHADER);
@@ -134,6 +186,41 @@ pub const VoxelBatch = struct {
 
     pub fn end(self: *@This()) void {
         self.flush();
+    }
+
+    pub fn drawMesh(self: *@This(), mesh: Mesh) void {
+        if (self.voxel_count > 0) {
+            self.flush();
+        }
+
+        // 1st attribute buffer: mesh vertices
+        c.glEnableVertexAttribArray(0);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, self.mesh_vbo);
+        c.glVertexAttribPointer(0, 2, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
+        // 2nd attribute buffer: position and size
+        c.glEnableVertexAttribArray(1);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, mesh.position_vbo);
+        c.glVertexAttribPointer(1, POS_SIZE_ATTRS, c.GL_FLOAT, c.GL_FALSE, 0, null);
+
+        // 3rd attribute buffer: color
+        c.glEnableVertexAttribArray(2);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, mesh.color_vbo);
+        c.glVertexAttribPointer(2, COLOR_ATTRS, c.GL_UNSIGNED_BYTE, c.GL_TRUE, 0, null);
+
+        c.glUseProgram(self.shader);
+
+        c.glUniformMatrix4fv(self.uniforms.projMat, 1, c.GL_FALSE, &self.camera.projMat);
+        c.glUniformMatrix4fv(self.uniforms.viewMat, 1, c.GL_FALSE, &self.camera.view());
+        c.glUniform3fv(self.uniforms.camPos, 1, &self.camera.pos.items);
+        c.glUniform1f(self.uniforms.near, self.camera.near);
+        c.glUniform1f(self.uniforms.far, self.camera.far);
+
+        c.glVertexAttribDivisor(0, 0);
+        c.glVertexAttribDivisor(1, 1);
+        c.glVertexAttribDivisor(2, 1);
+
+        c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, @divFloor(QUAD_VERTS.len, 2), @intCast(c_int, mesh.voxel_count));
     }
 
     pub fn drawVoxel(self: *@This(), pos: Vec3f, size: f32, color: [3]u8) void {
