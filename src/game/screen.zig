@@ -12,10 +12,13 @@ const cos = std.math.cos;
 
 const MAX_VOXELS = 1000;
 
-const VOXELS_SIZE = 32;
+const CHUNK_W = 64;
+const CHUNK_D = 64;
+const CHUNK_H = 64;
+const CHUNK_SIZE = CHUNK_W * CHUNK_D * CHUNK_H;
 pub const Voxels = struct {
     pos: Vec3f,
-    data: *[32 * 32 * 32]u8,
+    data: *[CHUNK_W * CHUNK_H * CHUNK_D]u8,
     mesh: ?VoxelBatch.Mesh,
 
     pub fn it(self: *@This()) Iterator {
@@ -36,15 +39,15 @@ pub const Voxels = struct {
         z: u8,
         const VoxVal = struct { pos: Vec3(u8), val: u8 };
         fn next(self: *@This()) ?VoxVal {
-            if (self.i >= 32 * 32 * 32) return null;
+            if (self.i >= CHUNK_SIZE) return null;
             const cur = self.i;
             self.i += 1;
             self.x += 1;
-            if (self.x >= 32) {
+            if (self.x >= CHUNK_W) {
                 self.x = 0;
                 self.y += 1;
             }
-            if (self.y >= 32) {
+            if (self.y >= CHUNK_H) {
                 self.x = 0;
                 self.y = 0;
                 self.z += 1;
@@ -64,7 +67,8 @@ pub const Voxels = struct {
     }
 
     pub fn init(self: *@This(), alloc: *std.mem.Allocator, pos: Vec3f) !void {
-        self.data = try alloc.create([32 * 32 * 32]u8);
+        self.data = try alloc.create([CHUNK_SIZE]u8);
+        std.mem.set(u8, self.data, 0);
         self.pos = pos;
         self.mesh = null;
     }
@@ -73,17 +77,10 @@ pub const Voxels = struct {
         alloc.destroy(self.data);
     }
 
-    // fn i2pos(index: usize) Vec3(u8) {
-    //     var x = index % 32 * 32;
-    //     var y = index % 32;
-    //     var z ;
-    //     return Vec3(u8).new(.{x, y, z});
-    // }
-
     fn pos2i(pos: Vec3(u8)) usize {
         var x: usize = pos.items[0];
-        var y: usize = @as(usize, pos.items[1]) * VOXELS_SIZE;
-        var z: usize = @as(usize, pos.items[2]) * VOXELS_SIZE * VOXELS_SIZE;
+        var y: usize = @as(usize, pos.items[1]) * CHUNK_W;
+        var z: usize = @as(usize, pos.items[2]) * CHUNK_W * CHUNK_H;
         return x + y + z;
     }
 
@@ -98,21 +95,18 @@ pub const Voxels = struct {
 
 fn noiseChunk(chunk: *Voxels) void {
     var x: u8 = 0;
-    while (x < 32) : (x += 1) {
+    while (x < CHUNK_W) : (x += 1) {
         var z: u8 = 0;
-        while (z < 32) : (z += 1) {
+        while (z < CHUNK_D) : (z += 1) {
             var fx = @intToFloat(f32, x) + chunk.pos.items[0];
             var fz = @intToFloat(f32, z) + chunk.pos.items[2];
             var sample = c.stb_perlin_noise3(fx / 32, 1.0 / 32.0, fz / 32, 0, 0, 0);
 
             var y: u8 = 0;
-            while (y < 32) : (y += 1) {
-                var fy: f32 = @intToFloat(f32, y);
-                if (fy < sample * 15 + 15) {
-                    chunk.set(Vec3(u8).new(.{ x, y, z }), 1);
-                } else {
-                    chunk.set(Vec3(u8).new(.{ x, y, z }), 0);
-                }
+            var fy: f32 = @intToFloat(f32, y);
+            while (fy < sample * 15 + 15 and y < CHUNK_H) : (y += 1) {
+                fy = @intToFloat(f32, y);
+                chunk.set(Vec3(u8).new(.{ x, y, z }), 1);
             }
         }
     }
@@ -175,11 +169,11 @@ pub const Screen = struct {
         try self.voxel_batch.init();
 
         var x: f32 = 0;
-        while (x < 10) : (x += 1) {
+        while (x < 3) : (x += 1) {
             var z: f32 = 0;
-            while (z < 10) : (z += 1) {
+            while (z < 3) : (z += 1) {
                 const chunk = try self.voxels.addOne();
-                try chunk.init(self.alloc, Vec3f.new(.{x * 32, 0, z * 32}));
+                try chunk.init(self.alloc, Vec3f.new(.{x * CHUNK_W, 0, z * CHUNK_D}));
                 noiseChunk(chunk);
             }
         }
