@@ -97,7 +97,9 @@ void main()
         pos.xy += meshPos.xy * size / 2.0;
     }
 
-    gl_Position = vec4(pos.xy, 0.0, 1.0);
+    vec4 p = vec4(voxelPosAndSize.xyz, 1.0) * viewMat * projMat;
+
+    gl_Position = vec4(pos.xy, p.z / p.w, 1.0);
     ray = pos.x * cam_sideways + pos.y * cam_up - 1.0 * cam_forward;
     vColor = aColor;
     voxelWorldPosAndSize = voxelPosAndSize;
