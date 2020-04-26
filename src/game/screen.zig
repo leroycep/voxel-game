@@ -55,15 +55,16 @@ pub const Voxels = struct {
         }
     };
 
-    pub fn new(pos: Vec3f) @This() {
+    pub fn new() @This() {
         return @This(){
-            .pos = pos,
+            .pos = Vec3f.new(.{0, 0, 0}),
             .data = undefined,
         };
     }
 
-    pub fn init(self: *@This(), alloc: *std.mem.Allocator) !void {
+    pub fn init(self: *@This(), alloc: *std.mem.Allocator, pos: Vec3f) !void {
         self.data = try alloc.create([32 * 32 * 32]u8);
+        self.pos = pos;
     }
 
     pub fn deinit(self: *@This(), alloc: *std.mem.Allocator) void {
@@ -97,7 +98,7 @@ pub const Voxels = struct {
 pub const Screen = struct {
     alloc: *std.mem.Allocator,
     camera: Camera,
-    voxels: Voxels,
+    voxels: std.ArrayList(Voxels),
     voxel_batch: VoxelBatch,
     iskeydown: struct {
         forward: bool,
@@ -122,8 +123,8 @@ pub const Screen = struct {
         const camerapos = Vec3f.new(.{ 5, 0, -10 });
         return @This(){
             .alloc = alloc,
-            .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 100),
-            .voxels = Voxels.new(Vec3f.new(.{0, 0, 0})),
+            .camera = Camera.init(camerapos, std.math.tau * 1.0 / 4.0, 640 / 480, 0.01, 1000),
+            .voxels = std.ArrayList(Voxels).init(alloc), //Voxels.new(Vec3f.new(.{0, 0, 0})),
             .voxel_batch = undefined,
             .iskeydown = .{
                 .forward = false,
@@ -148,7 +149,8 @@ pub const Screen = struct {
 
     pub fn init(self: *@This(), ctx: platform.Context) !void {
         try self.voxel_batch.init();
-        try self.voxels.init(self.alloc);
+        const voxels1 = try self.voxels.addOne();
+        try voxels1.init(self.alloc, Vec3f.new(.{0, 0, 0}));
 
         var x: u8 = 0;
         var y: u8 = 0;
@@ -159,12 +161,11 @@ pub const Screen = struct {
             var fy = @intToFloat(f32, y);
             var fz = @intToFloat(f32, z);
             var sample = c.stb_perlin_noise3(fx / 11, fy / 11, fz / 11, 0, 0, 0);
-            std.debug.warn("{} * {} * {}\n", .{x, y, z});
             if (sample > 0.2) {
                 count += 1;
-                self.voxels.set(Vec3(u8).new(.{x, y, z}), 1);
+                voxels1.set(Vec3(u8).new(.{x, y, z}), 1);
             } else {
-                self.voxels.set(Vec3(u8).new(.{x, y, z}), 0);
+                voxels1.set(Vec3(u8).new(.{x, y, z}), 0);
             }
             x += 1;
             if (x >= 32) {
@@ -177,7 +178,19 @@ pub const Screen = struct {
                 z += 1;
             }
         }
-        std.debug.warn("{}\n", .{count});
+
+        var x1: f32 = 1;
+        var z1: f32 = 0;
+        while (z1 < 10) {
+            const voxels = try self.voxels.addOne();
+            voxels.data = voxels1.data;
+            voxels.pos = Vec3f.new(.{x1 * 32, 0, z1 * 32});
+            x1 += 1;
+            if (x1 > 10) {
+                x1 = 0;
+                z1 += 1;
+            }
+        }
 
         _ = c.SDL_SetRelativeMouseMode(.SDL_TRUE);
         var i: i32 = 0;
@@ -189,7 +202,10 @@ pub const Screen = struct {
     }
 
     pub fn deinit(self: *@This(), ctx: platform.Context) void {
-        self.voxels.deinit(self.alloc);
+        for(self.voxels.items) |*voxels| {
+            voxels.deinit(self.alloc);
+        }
+        self.voxels.deinit();
     }
 
     pub fn update(self: *@This(), ctx: platform.Context, tickTime: f64, delta: f64) !void {
@@ -290,26 +306,24 @@ pub const Screen = struct {
 
         self.voxel_batch.camera = self.camera;
         self.voxel_batch.begin();
-        var it = self.voxels.it();
-        // var count: usize = 0;
+        for (self.voxels.items) |*voxels| {
+            self.renderVoxels(voxels);
+        }
+        self.voxel_batch.end();
+
+        c.SDL_GL_SwapWindow(ctx.window);
+    }
+
+    pub fn renderVoxels(self: *@This(), voxels: *Voxels) void {
+        var it = voxels.it();
         while (it.next()) |val| {
             if (val.val != 0) {
-                // count += 1;
-                const x = self.voxels.pos.items[0] + @intToFloat(f32, val.pos.items[0]);
-                const y = self.voxels.pos.items[1] + @intToFloat(f32, val.pos.items[1]);
-                const z = self.voxels.pos.items[2] + @intToFloat(f32, val.pos.items[2]);
+                const x = voxels.pos.items[0] + @intToFloat(f32, val.pos.items[0]);
+                const y = voxels.pos.items[1] + @intToFloat(f32, val.pos.items[1]);
+                const z = voxels.pos.items[2] + @intToFloat(f32, val.pos.items[2]);
                 const pos = Vec3f.new(.{x, y, z});
                 self.voxel_batch.drawVoxel(pos, 1, .{120, 24, 60});
             }
         }
-        // std.debug.warn("{}\n", .{count});
-        self.voxel_batch.drawVoxel(Vec3f.new(.{ 0, 0, 0 }), 1, .{ 255, 0, 0 });
-        self.voxel_batch.drawVoxel(Vec3f.new(.{ 1, 0, 0 }), 1, .{ 0, 255, 0 });
-        self.voxel_batch.drawVoxel(Vec3f.new(.{ 0, 0, 1 }), 1, .{ 0, 0, 255 });
-        self.voxel_batch.drawVoxel(Vec3f.new(.{ -1, 0, 0 }), 1, .{ 0, 0, 255 });
-        self.voxel_batch.drawVoxel(Vec3f.new(.{ 0, 0, -1 }), 1, .{ 0, 255, 0 });
-        self.voxel_batch.end();
-
-        c.SDL_GL_SwapWindow(ctx.window);
     }
 };
