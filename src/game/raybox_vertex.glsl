@@ -54,6 +54,14 @@ void main()
     vec3 cam_up = viewMat[1].xyz;
     vec3 cam_forward = viewMat[2].xyz;
 
+
+    float stochasticCoverage = size * size;
+    if ((stochasticCoverage < 0.8) &&
+        (float(gl_VertexID & 0xffff) > stochasticCoverage * (float(0xffff) / 0.8))) {
+        gl_Position = vec4(-1,-1,-1,-1);
+        return;
+    }
+
     if (size > (60.0 / 480.0)) {
         vec3 p = voxelPosAndSize.xyz;
         float e = voxelPosAndSize.w / 2.0;
